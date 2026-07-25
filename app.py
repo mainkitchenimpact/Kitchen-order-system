@@ -1,14 +1,14 @@
 import streamlit as st
-import pandas as pd
-from datetime import date, datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# ==========================================
-# ส่วนตั้งค่าการเชื่อมต่อ Firebase
-# ==========================================
+# ดึงข้อมูล Credential จาก Streamlit Secrets
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_key.json")
+    key_dict = dict(st.secrets["firebase"])
+    # แปลง \n ใน private_key ให้ทำงานถูกต้อง
+    key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+    
+    cred = credentials.Certificate(key_dict)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()

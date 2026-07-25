@@ -18,7 +18,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ==========================================
-# กำหนดโครงสร้างตารางข้อมูลออเดอร์ (ชุดเดียวที่ถูกต้อง)
+# กำหนดโครงสร้างตารางข้อมูลออเดอร์
 # ==========================================
 columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
                  'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ']
@@ -39,7 +39,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# ฟังก์ชันดึงข้อมูลจาก Firebase (ไม่ใช้ Cache เพื่อความสดใหม่)
+# ฟังก์ชันดึงข้อมูลจาก Firebase
 # ==========================================
 def load_master_recipes():
     try:
@@ -66,7 +66,7 @@ def load_orders():
         st.error(f"ไม่สามารถดึงข้อมูลออเดอร์ได้: {e}")
         return pd.DataFrame(columns=columns_format)
 
-# ฟังก์ชันช่วยสร้างรหัสวัตถุดิบอัตโนมัติ (Auto-generate Item Code)
+# ฟังก์ชันช่วยสร้างรหัสวัตถุดิบอัตโนมัติ
 def generate_next_item_code(dept_name, current_master_df):
     prefix_map = {
         "ครัว บุชเชอร์": "BU",
@@ -178,7 +178,6 @@ def main_kitchen_page():
 
     edited_prep_df = pd.DataFrame()
     edited_butcher_df = pd.DataFrame()
-    edited_bakery_df = pd.DataFrame()
     
     if selected_menu:
         st.markdown(f"**รายการวัตถุดิบสำหรับ: {selected_menu}** *(คลิกที่ช่องตัวเลขเพื่อแก้ไขได้)*")
@@ -191,7 +190,8 @@ def main_kitchen_page():
             display_cols = ['Item_Code', 'Item_Description', 'จำนวน', 'Unit']
             display_cols = [col for col in display_cols if col in recipe_df.columns]
             
-            col_prep, col_butcher, col_bakery = st.columns(3)
+            # ปรับแสดงผลเหลือแค่ 2 ครัว (Prep และ Butcher)
+            col_prep, col_butcher = st.columns(2)
             
             with col_prep:
                 st.markdown("#### 🥗 ครัว Prep")
@@ -208,14 +208,6 @@ def main_kitchen_page():
                     edited_butcher_df = st.data_editor(butcher_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
                 else:
                     st.info("ไม่มีรายการ")
-
-            with col_bakery:
-                st.markdown("#### 🍞 ครัว Bakery")
-                bakery_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว Bakery']
-                if not bakery_df.empty:
-                    edited_bakery_df = st.data_editor(bakery_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"bakery_{selected_menu}")
-                else:
-                    st.info("ไม่มีรายการ")
         
         if st.button(f"➕ เพิ่ม '{selected_menu}' ลงในรายการสรุป"):
             if event_type == "":
@@ -225,7 +217,8 @@ def main_kitchen_page():
                 rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
                 use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
                 
-                for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์'), (edited_bakery_df, 'ครัว Bakery')]:
+                # วูปเฉพาะครัว Prep และ Butcher เท่านั้น
+                for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
                         for _, row in df_part.iterrows():
                             new_drafts.append({
@@ -248,7 +241,8 @@ def main_kitchen_page():
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
     else:
-        sum_c1, sum_c2, sum_c3 = st.columns(3)
+        # ปรับแสดงผลสรุปเหลือ 2 คอลัมน์
+        sum_c1, sum_c2 = st.columns(2)
         draft_df = st.session_state.draft_orders.copy()
         draft_df['__index__'] = draft_df.index 
         draft_df.insert(0, '❌ ลบ', False) 
@@ -256,7 +250,6 @@ def main_kitchen_page():
         summary_display_cols = ['❌ ลบ', 'เมนู', 'วัตถุดิบ', 'จำนวน', 'หน่วย', '__index__']
         edited_prep_sum = pd.DataFrame()
         edited_butcher_sum = pd.DataFrame()
-        edited_bakery_sum = pd.DataFrame()
         
         with sum_c1:
             st.markdown("#### 🥗 สรุป: ครัว Prep")
@@ -279,17 +272,6 @@ def main_kitchen_page():
                     st.session_state.draft_orders.at[row['__index__'], 'หน่วย'] = row['หน่วย']
             else:
                 st.info("ไม่มีรายการ")
-
-        with sum_c3:
-            st.markdown("#### 🍞 สรุป: Bakery")
-            bakery_summary = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Bakery']
-            if not bakery_summary.empty:
-                edited_bakery_sum = st.data_editor(bakery_summary[summary_display_cols], use_container_width=True, hide_index=True, disabled=['เมนู', 'วัตถุดิบ'], column_config={"__index__": None}, key="summary_bakery_editor")
-                for _, row in edited_bakery_sum.iterrows():
-                    st.session_state.draft_orders.at[row['__index__'], 'จำนวน'] = row['จำนวน']
-                    st.session_state.draft_orders.at[row['__index__'], 'หน่วย'] = row['หน่วย']
-            else:
-                st.info("ไม่มีรายการ")
         
         st.markdown("<br>", unsafe_allow_html=True)
         c_del, c_submit = st.columns([3, 7])
@@ -299,7 +281,6 @@ def main_kitchen_page():
                 to_delete_indices = []
                 if not edited_prep_sum.empty: to_delete_indices.extend(edited_prep_sum[edited_prep_sum['❌ ลบ'] == True]['__index__'].tolist())
                 if not edited_butcher_sum.empty: to_delete_indices.extend(edited_butcher_sum[edited_butcher_sum['❌ ลบ'] == True]['__index__'].tolist())
-                if not edited_bakery_sum.empty: to_delete_indices.extend(edited_bakery_sum[edited_bakery_sum['❌ ลบ'] == True]['__index__'].tolist())
                     
                 if to_delete_indices:
                     st.session_state.draft_orders = st.session_state.draft_orders.drop(to_delete_indices).reset_index(drop=True)
@@ -356,7 +337,7 @@ def admin_page():
             st.info("💡 เคล็ดลับ: ช่องรหัสวัตถุดิบ (Item Code) ด้านล่างจะถูกสร้างให้อัตโนมัติตามครัวที่คุณเลือกครับ")
 
         st.markdown("---")
-        st.markdown("**📋 ตารางกรอกส่วนผสม/วัตถุดิบ (สามารถพิมพ์เพิ่มได้หลายบรรทัด)**")
+        st.markdown("📋 **ตารางกรอกส่วนผสม/วัตถุดิบ (สามารถพิมพ์เพิ่มได้หลายบรรทัด)**")
         
         current_master_for_code = load_master_recipes()
         default_auto_code = generate_next_item_code(kitchen_dept, current_master_for_code)

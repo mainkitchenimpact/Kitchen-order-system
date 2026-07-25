@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
+from datetime import date, datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- 1. เริ่มต้นใช้งาน Firebase จาก Secrets ---
+# ==========================================
+# ส่วนตั้งค่าการเชื่อมต่อ Firebase จาก Secrets
+# ==========================================
 if not firebase_admin._apps:
-    # ดึงค่า secrets และแก้ไข private_key
     key_dict = dict(st.secrets["firebase"])
     if "private_key" in key_dict:
         key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
@@ -15,15 +17,29 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- 2. ตั้งค่ารูปแบบคอลัมน์ ---
-columns_format = ["Item", "Quantity", "Price", "Notes"]
+# ==========================================
+# กำหนดโครงสร้างตารางข้อมูลออเดอร์ (ชุดเดียวที่ถูกต้อง)
+# ==========================================
+columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
+                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ']
 
-# --- 3. สร้าง Session State (บรรทัดเจ้าปัญหา) ---
-if "draft_orders" not in st.session_state:
+# จำลองตาราง "ตะกร้าชั่วคราว"
+if 'draft_orders' not in st.session_state:
     st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
 
+if 'logged_in_dept' not in st.session_state:
+    st.session_state.logged_in_dept = None
+
+# สร้างตัวแปร Session State สำหรับเก็บค่าในฟอร์ม Main Kitchen
+if 'event_type_input' not in st.session_state: st.session_state.event_type_input = ""
+if 'no_function_input' not in st.session_state: st.session_state.no_function_input = ""
+if 'pax_input' not in st.session_state: st.session_state.pax_input = 70
+if 'to_input' not in st.session_state: st.session_state.to_input = ""
+if 'receive_date_input' not in st.session_state: st.session_state.receive_date_input = date.today()
+if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
+
 # ==========================================
-# ฟังก์ชันดึงข้อมูลจาก Firebase
+# ฟังก์ชันดึงข้อมูลจาก Firebase (ไม่ใช้ Cache เพื่อความสดใหม่)
 # ==========================================
 def load_master_recipes():
     try:
@@ -73,24 +89,6 @@ def generate_next_item_code(dept_name, current_master_df):
                     
     next_num = max_num + 1
     return f"{prefix}-{next_num:03d}"
-
-# กำหนดโครงสร้างตารางข้อมูลออเดอร์
-columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
-                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ']
-
-if 'draft_orders' not in st.session_state:
-    st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
-
-if 'logged_in_dept' not in st.session_state:
-    st.session_state.logged_in_dept = None
-
-# สร้างตัวแปร Session State สำหรับเก็บค่าในฟอร์ม Main Kitchen
-if 'event_type_input' not in st.session_state: st.session_state.event_type_input = ""
-if 'no_function_input' not in st.session_state: st.session_state.no_function_input = ""
-if 'pax_input' not in st.session_state: st.session_state.pax_input = 70
-if 'to_input' not in st.session_state: st.session_state.to_input = ""
-if 'receive_date_input' not in st.session_state: st.session_state.receive_date_input = date.today()
-if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 master_df = load_master_recipes()
 
@@ -347,7 +345,6 @@ def admin_page():
     
     st.header("➕ เพิ่มสูตรอาหารใหม่ (รองรับหลายวัตถุดิบพร้อมกัน)")
     
-    # ฟอร์มหลักสำหรับกรอกชื่อเมนูและเลือกครัว
     with st.form("batch_add_recipe_form"):
         rc1, rc2 = st.columns(2)
         with rc1:
@@ -361,7 +358,6 @@ def admin_page():
         st.markdown("---")
         st.markdown("**📋 ตารางกรอกส่วนผสม/วัตถุดิบ (สามารถพิมพ์เพิ่มได้หลายบรรทัด)**")
         
-        # เตรียมตารางเปล่า 10 แถว สำหรับให้ผู้ใช้กรอกวัตถุดิบ
         current_master_for_code = load_master_recipes()
         default_auto_code = generate_next_item_code(kitchen_dept, current_master_for_code)
         
@@ -376,10 +372,9 @@ def admin_page():
         
         batch_df = pd.DataFrame(initial_data)
         
-        # ใช้ data_editor ให้กรอกข้อมูล 10 บรรทัด
         edited_batch_df = st.data_editor(
             batch_df,
-            num_rows="dynamic", # อนุญาตให้กดเพิ่มแถวเองได้ถ้า 10 แถวไม่พอ
+            num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
             key="batch_recipe_editor"
@@ -391,14 +386,12 @@ def admin_page():
             if food_name.strip() == "":
                 st.error("กรุณากรอก 'ชื่อเมนูอาหาร' ก่อนบันทึกครับ")
             else:
-                # วิ่งลูปสร้างรหัสอัตโนมัติทีละแถวที่ผู้ใช้กรอกเข้ามา
                 success_count = 0
                 temp_master = load_master_recipes()
                 
                 for _, row in edited_batch_df.iterrows():
                     desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
                     if desc != "" and desc != "nan":
-                        # สร้างรหัสอัตโนมัติตามลำดับปัจจุบัน
                         auto_code = generate_next_item_code(kitchen_dept, temp_master)
                         
                         qty = float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0
@@ -416,12 +409,10 @@ def admin_page():
                         db.collection('master_recipes').add(new_data)
                         success_count += 1
                         
-                        # อัปเดตตารางชั่วคราวจำลองเพื่อให้รหัสถัดไปไม่ซ้ำกันในรอบถัดไปของลูป
                         new_row_df = pd.DataFrame([new_data])
                         temp_master = pd.concat([temp_master, new_row_df], ignore_index=True)
                 
                 if success_count > 0:
-                    load_master_recipes.clear()
                     st.success(f"บันทึกเมนู '{food_name}' สำเร็จ! เพิ่มวัตถุดิบเข้าระบบทั้งหมด {success_count} รายการ")
                     st.rerun()
                 else:
@@ -459,7 +450,6 @@ def admin_page():
                         db.collection('master_recipes').document(doc_id).delete()
                         count += 1
                 
-                load_master_recipes.clear()
                 st.success(f"ลบรายการออก {count} รายการเรียบร้อยแล้ว!")
                 st.rerun()
             else:

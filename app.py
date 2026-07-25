@@ -1,20 +1,26 @@
 import streamlit as st
+import pandas as pd
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# ดึงค่าจาก Secrets และแปลงเป็น dictionary
-key_dict = dict(st.secrets["firebase"])
-
-# ปรับแก้ private_key ให้รองรับ escape characters (\n) อย่างถูกต้อง
-if "private_key" in key_dict:
-    key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
-
-# ตรวจสอบการ Initialize แอป Firebase (ป้องกัน Error เวลา Rerun)
+# --- 1. เริ่มต้นใช้งาน Firebase จาก Secrets ---
 if not firebase_admin._apps:
+    # ดึงค่า secrets และแก้ไข private_key
+    key_dict = dict(st.secrets["firebase"])
+    if "private_key" in key_dict:
+        key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+    
     cred = credentials.Certificate(key_dict)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+# --- 2. ตั้งค่ารูปแบบคอลัมน์ ---
+columns_format = ["Item", "Quantity", "Price", "Notes"]
+
+# --- 3. สร้าง Session State (บรรทัดเจ้าปัญหา) ---
+if "draft_orders" not in st.session_state:
+    st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
 
 # ==========================================
 # ฟังก์ชันดึงข้อมูลจาก Firebase

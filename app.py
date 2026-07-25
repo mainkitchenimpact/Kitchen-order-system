@@ -1,5 +1,10 @@
 import streamlit as st
 import pandas as pd
+from datetime import date
+
+# กำหนดค่าเริ่มต้นเป็นวันปัจจุบัน หากยังไม่มีใน session_state
+if 'receive_date_input' not in st.session_state:
+    st.session_state.receive_date_input = date.today()
 import firebase_admin
 from firebase_admin import credentials, firestore
 

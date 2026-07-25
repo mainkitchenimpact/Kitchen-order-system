@@ -16,7 +16,6 @@ db = firestore.client()
 # ==========================================
 # ฟังก์ชันดึงข้อมูลจาก Firebase
 # ==========================================
-@st.cache_data
 def load_master_recipes():
     try:
         docs = db.collection('master_recipes').stream()

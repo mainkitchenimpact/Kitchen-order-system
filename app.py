@@ -3,34 +3,38 @@ import pandas as pd
 from datetime import date, datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ==========================================
-# ส่วนตั้งค่าการเชื่อมต่อ Firebase จาก Secrets
+# 1. การเชื่อมต่อ Firebase ผ่าน Streamlit Secrets
 # ==========================================
 if not firebase_admin._apps:
-    key_dict = dict(st.secrets["firebase"])
-    if "private_key" in key_dict:
-        key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
-    
-    cred = credentials.Certificate(key_dict)
-    firebase_admin.initialize_app(cred)
+    try:
+        key_dict = dict(st.secrets["firebase"])
+        if "private_key" in key_dict:
+            key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+        
+        cred = credentials.Certificate(key_dict)
+        firebase_admin.initialize_app(cred)
+    except Exception as e:
+        st.error(f"ไม่สามารถเชื่อมต่อ Firebase ได้: {e}")
 
 db = firestore.client()
 
 # ==========================================
-# กำหนดโครงสร้างตารางข้อมูลออเดอร์
+# 2. กำหนดโครงสร้างตารางข้อมูล
 # ==========================================
 columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
                  'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ']
 
-# จำลองตาราง "ตะกร้าชั่วคราว"
 if 'draft_orders' not in st.session_state:
     st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
 
 if 'logged_in_dept' not in st.session_state:
     st.session_state.logged_in_dept = None
 
-# สร้างตัวแปร Session State สำหรับเก็บค่าในฟอร์ม Main Kitchen
+# ตัวแปร Session State สำหรับฟอร์มรายละเอียดงาน
 if 'event_type_input' not in st.session_state: st.session_state.event_type_input = ""
 if 'no_function_input' not in st.session_state: st.session_state.no_function_input = ""
 if 'pax_input' not in st.session_state: st.session_state.pax_input = 70
@@ -39,7 +43,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# ฟังก์ชันดึงข้อมูลจาก Firebase
+# 3. ฟังก์ชันดึงข้อมูลจาก Firebase (ไม่ใช้ Cache เพื่อป้องกันค้าง)
 # ==========================================
 def load_master_recipes():
     try:
@@ -58,15 +62,12 @@ def load_orders():
     try:
         docs = db.collection('orders').stream()
         data = [doc.to_dict() for doc in docs]
-        if data:
-            return pd.DataFrame(data)
-        else:
-            return pd.DataFrame(columns=columns_format)
+        return pd.DataFrame(data) if data else pd.DataFrame(columns=columns_format)
     except Exception as e:
         st.error(f"ไม่สามารถดึงข้อมูลออเดอร์ได้: {e}")
         return pd.DataFrame(columns=columns_format)
 
-# ฟังก์ชันช่วยสร้างรหัสวัตถุดิบอัตโนมัติ
+# ฟังก์ชันสร้างรหัสวัตถุดิบอัตโนมัติ (BU-, PA-, BA-)
 def generate_next_item_code(dept_name, current_master_df):
     prefix_map = {
         "ครัว บุชเชอร์": "BU",
@@ -90,6 +91,55 @@ def generate_next_item_code(dept_name, current_master_df):
     next_num = max_num + 1
     return f"{prefix}-{next_num:03d}"
 
+# ฟังก์ชัน Export ข้อมูลเป็น Google Sheets ตามเทมเพลต Food Requisition Form
+def export_to_google_sheet(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        key_dict = dict(st.secrets["firebase"])
+        if "private_key" in key_dict:
+            key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+            
+        creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        
+        sheet_title = f"Food_Requisition_{event_type}_{no_func}"
+        sh = client.create(sheet_title)
+        worksheet = sh.get_worksheet(0)
+        
+        header_data = [
+            ["IMPACT EXHIBITION MANAGEMENT CO.,LTD.", "", "", "", ""],
+            ["Food Requisition Form", "", "", "", ""],
+            [f"ประเภทงาน : {event_type}", "", f"จำนวนคน : {pax}", "", ""],
+            [f"To : {to_dept}", "", f"No. (Function) : {no_func}", "", ""],
+            [f"วันที่รับสินค้า : {rec_date}", "", f"วันที่ใช้สินค้า : {use_date}", "", ""],
+            ["", "", "", "", ""],
+            ["No.", "REQUESTED Qty", "Unit", "Description (วัตถุดิบ)", "Menu / ครัวที่รับผิดชอบ"]
+        ]
+        
+        items_data = []
+        for idx, row in draft_df.iterrows():
+            items_data.append([
+                idx + 1,
+                row['จำนวน'],
+                row['หน่วย'],
+                row['วัตถุดิบ'],
+                f"{row['เมนู']} ({row['ครัวที่รับผิดชอบ']})"
+            ])
+            
+        footer_data = [
+            ["", "", "", "", ""],
+            [f"วันที่รับ : {rec_date}", "", f"วันที่ใช้ : {use_date}", "", ""],
+            ["Requested by: ____________________", "", "", "Issued by: ____________________", ""]
+        ]
+        
+        full_content = header_data + items_data + footer_data
+        worksheet.update('A1', full_content)
+        sh.share('', perm_type='anyone', role='reader')
+        return sh.url
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการสร้าง Google Sheets: {e}")
+        return None
+
 master_df = load_master_recipes()
 
 st.set_page_config(page_title="ระบบสั่งวัตถุดิบครัว", layout="wide")
@@ -109,7 +159,7 @@ div.stButton > button[kind="primary"]:hover {
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ฟังก์ชัน 1: หน้าล็อกอิน (Login Page)
+# 4. หน้าล็อกอิน (Login Page)
 # ==========================================
 def login_page():
     st.title("🔐 เข้าสู่ระบบ (Login)")
@@ -122,7 +172,7 @@ def login_page():
         st.rerun()
 
 # ==========================================
-# ฟังก์ชัน 2: หน้าของครัวเมน (Main Kitchen)
+# 5. หน้าของครัวเมน (Main Kitchen)
 # ==========================================
 def main_kitchen_page():
     col1, col2 = st.columns([8, 1])
@@ -139,6 +189,7 @@ def main_kitchen_page():
         st.warning("⚠️ ยังไม่มีข้อมูลสูตรอาหาร กรุณาไปเพิ่มข้อมูลที่เมนู Admin ก่อนครับ")
         return
 
+    # --- ส่วนที่ 1: ข้อมูลรายละเอียดงาน ---
     h_col1, h_col2 = st.columns([8, 2])
     with h_col1:
         st.header("📝 1. ข้อมูลรายละเอียดงาน")
@@ -167,6 +218,7 @@ def main_kitchen_page():
         
     st.markdown("---")
     
+    # --- ส่วนที่ 2: เลือกและจัดเตรียมเมนูอาหาร (เฉพาะ Prep และ Butcher) ---
     st.header("🛒 2. เลือกและจัดเตรียมเมนูอาหาร")
     
     if 'Food_Name' in master_df.columns:
@@ -190,7 +242,6 @@ def main_kitchen_page():
             display_cols = ['Item_Code', 'Item_Description', 'จำนวน', 'Unit']
             display_cols = [col for col in display_cols if col in recipe_df.columns]
             
-            # ปรับแสดงผลเหลือแค่ 2 ครัว (Prep และ Butcher)
             col_prep, col_butcher = st.columns(2)
             
             with col_prep:
@@ -217,7 +268,6 @@ def main_kitchen_page():
                 rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
                 use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
                 
-                # วูปเฉพาะครัว Prep และ Butcher เท่านั้น
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
                         for _, row in df_part.iterrows():
@@ -235,13 +285,12 @@ def main_kitchen_page():
 
     st.markdown("---")
     
-    # --- ส่วนที่ 3: สรุปและส่ง ---
+    # --- ส่วนที่ 3: สรุปรายการในงานนี้ (รอส่งให้ครัวอื่น) ---
     st.header("📤 3. สรุปรายการในงานนี้ (รอส่งให้ครัวอื่น)")
     
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
     else:
-        # ปรับแสดงผลสรุปเหลือ 2 คอลัมน์
         sum_c1, sum_c2 = st.columns(2)
         draft_df = st.session_state.draft_orders.copy()
         draft_df['__index__'] = draft_df.index 
@@ -274,7 +323,7 @@ def main_kitchen_page():
                 st.info("ไม่มีรายการ")
         
         st.markdown("<br>", unsafe_allow_html=True)
-        c_del, c_submit = st.columns([3, 7])
+        c_del, c_export, c_submit = st.columns([2, 4, 4])
         
         with c_del:
             if st.button("🗑️ ลบรายการที่เลือก"):
@@ -287,6 +336,18 @@ def main_kitchen_page():
                     st.rerun()
                 else:
                     st.warning("คุณยังไม่ได้ติ๊กเลือกรายการที่ต้องการลบครับ")
+
+        with c_export:
+            if st.button("📊 Export เป็น Google Sheets"):
+                with st.spinner("กำลังสร้างไฟล์ Google Sheets..."):
+                    rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
+                    use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
+                    sheet_url = export_to_google_sheet(
+                        st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str
+                    )
+                    if sheet_url:
+                        st.success("สร้าง Google Sheets สำเร็จ!")
+                        st.link_button("📥 คลิกที่นี่เพื่อเปิดดูไฟล์", sheet_url)
 
         with c_submit:
             if st.button("✅ ยืนยันการส่งออเดอร์ทั้งหมด", type="primary", use_container_width=True):
@@ -311,180 +372,11 @@ def main_kitchen_page():
         st.info("ยังไม่มีประวัติการส่งออเดอร์ครับ")
 
 # ==========================================
-# ฟังก์ชัน 3: หน้าหลังบ้าน Admin (จัดการสูตรอาหาร)
+# 6. หน้าหลังบ้าน Admin (จัดการสูตรอาหาร)
 # ==========================================
 def admin_page():
     col1, col2 = st.columns([8, 1])
     with col1:
         st.title("⚙️ ระบบหลังบ้าน: จัดการสูตรอาหาร (Master Recipes)")
     with col2:
-        if st.button("🚪 ออกจากระบบ"):
-            st.session_state.logged_in_dept = None
-            st.rerun()
-            
-    st.markdown("---")
-    
-    st.header("➕ เพิ่มสูตรอาหารใหม่ (รองรับหลายวัตถุดิบพร้อมกัน)")
-    
-    with st.form("batch_add_recipe_form"):
-        rc1, rc2 = st.columns(2)
-        with rc1:
-            recipe_code = st.text_input("รหัสสูตร (Recipe Code):", placeholder="เช่น EU001")
-            food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
-        with rc2:
-            kitchen_dept = st.selectbox("ครัวที่รับผิดชอบหลักสำหรับชุดนี้:", ["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"])
-            st.write("")
-            st.info("💡 เคล็ดลับ: ช่องรหัสวัตถุดิบ (Item Code) ด้านล่างจะถูกสร้างให้อัตโนมัติตามครัวที่คุณเลือกครับ")
-
-        st.markdown("---")
-        st.markdown("📋 **ตารางกรอกส่วนผสม/วัตถุดิบ (สามารถพิมพ์เพิ่มได้หลายบรรทัด)**")
-        
-        current_master_for_code = load_master_recipes()
-        default_auto_code = generate_next_item_code(kitchen_dept, current_master_for_code)
-        
-        initial_data = []
-        for i in range(10):
-            initial_data.append({
-                "รหัสวัตถุดิบ (Auto)": "",
-                "ชื่อวัตถุดิบ (Description)": "",
-                "อัตราส่วนต่อ 1 คน": 0.0,
-                "หน่วย": ""
-            })
-        
-        batch_df = pd.DataFrame(initial_data)
-        
-        edited_batch_df = st.data_editor(
-            batch_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-            key="batch_recipe_editor"
-        )
-            
-        submitted = st.form_submit_button("💾 บันทึกสูตรอาหารทั้งหมดลง Firebase", type="primary")
-        
-        if submitted:
-            if food_name.strip() == "":
-                st.error("กรุณากรอก 'ชื่อเมนูอาหาร' ก่อนบันทึกครับ")
-            else:
-                success_count = 0
-                temp_master = load_master_recipes()
-                
-                for _, row in edited_batch_df.iterrows():
-                    desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
-                    if desc != "" and desc != "nan":
-                        auto_code = generate_next_item_code(kitchen_dept, temp_master)
-                        
-                        qty = float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0
-                        unit_val = str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""
-                        
-                        new_data = {
-                            'Recipe_Code': recipe_code.strip(),
-                            'Food_Name': food_name.strip(),
-                            'Kitchen_Dept': kitchen_dept,
-                            'Item_Code': auto_code,
-                            'Item_Description': desc,
-                            'Std_Quantity': qty,
-                            'Unit': unit_val
-                        }
-                        db.collection('master_recipes').add(new_data)
-                        success_count += 1
-                        
-                        new_row_df = pd.DataFrame([new_data])
-                        temp_master = pd.concat([temp_master, new_row_df], ignore_index=True)
-                
-                if success_count > 0:
-                    st.success(f"บันทึกเมนู '{food_name}' สำเร็จ! เพิ่มวัตถุดิบเข้าระบบทั้งหมด {success_count} รายการ")
-                    st.rerun()
-                else:
-                    st.warning("กรุณากรอกข้อมูลวัตถุดิบอย่างน้อย 1 รายการในตารางครับ")
-
-    st.markdown("---")
-    st.header("📋 รายการสูตรอาหารทั้งหมดในฐานข้อมูล (Firebase)")
-    
-    current_master = load_master_recipes()
-    if not current_master.empty:
-        display_admin_df = current_master.copy()
-        display_admin_df.insert(0, '🗑️ ลบ', False)
-        
-        cols_to_show = ['🗑️ ลบ', 'Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit']
-        cols_to_show = [c for c in cols_to_show if c in display_admin_df.columns]
-        
-        edited_master = st.data_editor(
-            display_admin_df[cols_to_show],
-            use_container_width=True,
-            hide_index=True,
-            disabled=['Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'],
-            key="admin_master_editor"
-        )
-        
-        if st.button("❌ ลบรายการสูตรอาหารที่เลือก"):
-            to_delete_rows = edited_master[edited_master['🗑️ ลบ'] == True]
-            if not to_delete_rows.empty:
-                count = 0
-                for idx, row in to_delete_rows.iterrows():
-                    match_doc = current_master[
-                        (current_master['Food_Name'] == row['Food_Name']) & 
-                        (current_master['Item_Description'] == row['Item_Description'])
-                    ]
-                    for doc_id in match_doc['doc_id']:
-                        db.collection('master_recipes').document(doc_id).delete()
-                        count += 1
-                
-                st.success(f"ลบรายการออก {count} รายการเรียบร้อยแล้ว!")
-                st.rerun()
-            else:
-                st.warning("กรุณาติ๊กเลือกช่อง '🗑️ ลบ' หน้าวัตถุดิบที่ต้องการลบก่อนครับ")
-    else:
-        st.info("ยังไม่มีข้อมูลสูตรอาหารในระบบครับ")
-
-# ==========================================
-# ฟังก์ชัน 4: หน้าของครัวรับงาน (Prep, Butcher, Bakery)
-# ==========================================
-def receiver_kitchen_page(dept_name):
-    col1, col2 = st.columns([8, 1])
-    with col1:
-        st.title(f"🔪 หน้าจอรับออเดอร์: {dept_name}")
-    with col2:
-        if st.button("🚪 ออกจากระบบ"):
-            st.session_state.logged_in_dept = None
-            st.rerun()
-            
-    st.markdown("---")
-    
-    if st.button("🔄 ดึงออเดอร์ล่าสุด"):
-        st.rerun()
-        
-    st.header(f"📥 รายการออเดอร์ที่ต้องเตรียม")
-    
-    dept_mapping = {
-        "Prep": "ครัว Prep",
-        "Butcher": "ครัว บุชเชอร์",
-        "Bakery": "ครัว Bakery"
-    }
-    target_dept = dept_mapping.get(dept_name, dept_name)
-    
-    all_orders = load_orders()
-    if not all_orders.empty:
-        my_orders = all_orders[all_orders['ครัวที่รับผิดชอบ'] == target_dept]
-        
-        if my_orders.empty:
-            st.info("🎉 ยังไม่มีออเดอร์ของแผนกคุณเข้ามาในขณะนี้ครับ")
-        else:
-            display_df = my_orders.drop(columns=['timestamp'], errors='ignore')
-            st.dataframe(display_df, use_container_width=True)
-            st.info("💡 (ในอนาคตเราจะเพิ่มปุ่ม 'กดรับออเดอร์' ตรงนี้ เพื่อให้สถานะเปลี่ยนเป็นสีเขียวครับ)")
-    else:
-        st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
-
-# ==========================================
-# ระบบควบคุมเส้นทางหน้าจอ (Router)
-# ==========================================
-if st.session_state.logged_in_dept is None:
-    login_page()
-elif st.session_state.logged_in_dept == "Main Kitchen":
-    main_kitchen_page()
-elif st.session_state.logged_in_dept == "Admin":
-    admin_page()
-else:
-    receiver_kitchen_page(st.session_state.logged_in_dept)
+        if st.button("🚪 ออกจาก

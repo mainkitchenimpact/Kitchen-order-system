@@ -1,14 +1,16 @@
-import pandas as pd
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# ดึงข้อมูล Credential จาก Streamlit Secrets
-if not firebase_admin._apps:
-    key_dict = dict(st.secrets["firebase"])
-    # แปลง \n ใน private_key ให้ทำงานถูกต้อง
+# ดึงค่าจาก Secrets และแปลงเป็น dictionary
+key_dict = dict(st.secrets["firebase"])
+
+# ปรับแก้ private_key ให้รองรับ escape characters (\n) อย่างถูกต้อง
+if "private_key" in key_dict:
     key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
-    
+
+# ตรวจสอบการ Initialize แอป Firebase (ป้องกัน Error เวลา Rerun)
+if not firebase_admin._apps:
     cred = credentials.Certificate(key_dict)
     firebase_admin.initialize_app(cred)
 

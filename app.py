@@ -147,7 +147,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
         pages_html += f"""
         <div class="page-sheet" style="{page_break_style}">
             <div class="page-container">
-                <!-- ฝั่งซ้าย: ครัว Prep -->
                 <div class="form-box">
                     <div class="doc-code-top">PM38-FM-001</div>
                     <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
@@ -174,7 +173,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                     <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
                 </div>
 
-                <!-- ฝั่งขวา: ครัว บุชเชอร์ -->
                 <div class="form-box">
                     <div class="doc-code-top">PM38-FM-001</div>
                     <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
@@ -520,7 +518,7 @@ def main_kitchen_page():
 
                 col7.write(main_status)
 
-                # 🟢 การสื่อสาร: แสดงข้อความหมายเหตุที่ส่งมาจากครัว Prep/Butcher (ถ้ามี)
+                # แสดงข้อความหมายเหตุสื่อสารจากครัว Prep/Butcher
                 remarks_in_job = [str(r).strip() for r in job_items['หมายเหตุ'].dropna().unique() if str(r).strip() != '']
                 if remarks_in_job:
                     st.info(f"💬 **หมายเหตุจากครัวเตรียม ({job_to}):** {', '.join(remarks_in_job)}")
@@ -687,32 +685,29 @@ def receiver_kitchen_page(dept_name):
                 (my_orders['วันที่สั่ง'] == job_order_date)
             ].reset_index(drop=True)
 
-            current_status = job_items['สถานะ'].iloc[0] if not job_items.empty and 'สถานะ' in job_items.columns else '🔴 รอรับออเดอร์'
+            # 🟢 ข้อ 1 & 2: เอาสถานะออก / แสดง: งาน | ประเภท | จำนวนคน | วันที่รับสินค้า | วันที่ใช้งาน
+            header_text = f"📌 งาน: {job_to} | ประเภท: {job_event} | {job_pax} คน | วันที่รับสินค้า: {job_rec_date} | วันที่ใช้งาน: {job_use_date}"
+            
+            with st.expander(header_text, expanded=False):
+                # 🟢 ข้อ 4: ย้ายปุ่ม "พิมพ์ใบเบิก" ขึ้นมาไว้ข้างบนสุด
+                if st.button(f"🖨️ พิมพ์ใบเบิก", key=f"rec_btn_print_{idx}"):
+                    st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
 
-            # ย่อการ์ดไว้เป็นค่าเริ่มต้น (expanded=False)
-            with st.expander(f"📌 งาน: {job_to} | ประเภท: {job_event} | วันที่รับสินค้า: {job_rec_date} | สถานะ: {current_status}", expanded=False):
-                m_col1, m_col2, m_col3, m_col4 = st.columns([2, 2, 2, 3])
-                m_col1.write(f"**จำนวนคน:** {job_pax} Pax")
-                m_col2.write(f"**วันที่ใช้สินค้า:** {job_use_date}")
-                m_col3.write(f"**สั่งเมื่อ:** {job_order_date}")
-
-                with m_col4:
-                    status_options = ['🔴 รอรับออเดอร์', '🟡 กำลังเตรียมวัตถุดิบ', '🟢 พร้อมส่งมอบ (เสร็จสิ้น)']
-                    try: curr_idx = status_options.index(current_status)
-                    except ValueError: curr_idx = 0
-                    
-                    new_status = st.selectbox("เปลี่ยนสถานะ:", status_options, index=curr_idx, key=f"rec_status_select_{idx}")
-                    if new_status != current_status:
-                        if st.button("💾 บันทึกสถานะ", key=f"rec_btn_save_status_{idx}"):
-                            for doc_id in job_items['doc_id']:
-                                db.collection('orders').document(doc_id).update({'สถานะ': new_status})
-                            st.success(f"อัปเดตสถานะเป็น '{new_status}' เรียบร้อยแล้ว!")
-                            st.rerun()
+                if st.session_state.get(f"rec_show_modal_{idx}", False):
+                    with st.container():
+                        st.markdown("---")
+                        st.subheader(f"📄 แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (งาน: {job_to})")
+                        hist_html, hist_pages = generate_printable_html(
+                            full_job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
+                        )
+                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
 
                 st.markdown("---")
+                # 🟢 ข้อ 3: เมื่อกดขยายจะเห็น "วันที่สั่งออเดอร์"
+                st.markdown(f"🗓️ **วันที่สั่งออเดอร์:** `{job_order_date}`")
+
                 st.markdown("**✏️ รายการวัตถุดิบ (สามารถแก้ไขชื่อสินค้าและจำนวนได้):**")
                 
-                # 🟢 1. แสดงคอลัมน์แก้ไข โดยซ่อนคอลัมน์ doc_id ออกไป
                 edit_cols = ['วัตถุดิบ', 'จำนวน', 'หน่วย', 'เมนู']
                 available_cols = [c for c in edit_cols if c in job_items.columns]
                 
@@ -730,7 +725,7 @@ def receiver_kitchen_page(dept_name):
                     
                     for i, row in edited_df.iterrows():
                         orig_row = job_items.iloc[i]
-                        doc_id = orig_row.get('doc_id') # ดึง doc_id จากตารางต้นฉบับ
+                        doc_id = orig_row.get('doc_id')
                         
                         new_desc = str(row['วัตถุดิบ']).strip()
                         new_qty = float(row['จำนวน'])
@@ -766,7 +761,6 @@ def receiver_kitchen_page(dept_name):
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 🟢 2. ช่องหมายเหตุสำหรับการสื่อสาร
                 current_remark = ""
                 if not job_items.empty and 'หมายเหตุ' in job_items.columns:
                     val = job_items['หมายเหตุ'].iloc[0]
@@ -779,19 +773,6 @@ def receiver_kitchen_page(dept_name):
                         db.collection('orders').document(doc_id).update({'หมายเหตุ': new_remark.strip()})
                     st.success("บันทึกหมายเหตุสื่อสารเรียบร้อยแล้ว!")
                     st.rerun()
-
-                st.markdown("---")
-                if st.button(f"🖨️ พิมพ์ใบเบิก (ISO Form)", key=f"rec_btn_print_{idx}"):
-                    st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
-
-                if st.session_state.get(f"rec_show_modal_{idx}", False):
-                    with st.container():
-                        st.markdown("---")
-                        st.subheader(f"📄 แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (งาน: {job_to})")
-                        hist_html, hist_pages = generate_printable_html(
-                            full_job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
-                        )
-                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
 
     with tab2:
         st.header(f"📊 สรุปยอดรวมวัตถุดิบที่ต้องเตรียม ({target_dept})")

@@ -647,13 +647,13 @@ def main_kitchen_page():
             
             # แถบหัวข้อตารางเรียงลำดับใหม่ 1-7
             h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
-            h_c1.markdown("**1. วันที่สั่ง**")
-            h_c2.markdown("**2. ชื่องาน**")
-            h_c3.markdown("**3. ประเภทงาน**")
-            h_c4.markdown("**4. จำนวนคน**")
-            h_c5.markdown("**5. วันที่รับสินค้า**")
-            h_c6.markdown("**6. วันที่ใช้สินค้า**")
-            h_c7.markdown("**7. พิมพ์เอกสาร**")
+            h_c1.markdown("**วันที่สั่ง**")
+            h_c2.markdown("**ชื่องาน**")
+            h_c3.markdown("**ประเภทงาน**")
+            h_c4.markdown("**จำนวนคน**")
+            h_c5.markdown("**วันที่รับสินค้า**")
+            h_c6.markdown("**วันที่ใช้สินค้า**")
+            h_c7.markdown("**พิมพ์เอกสาร**")
             st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #334155;'>", unsafe_allow_html=True)
 
             for idx, job in unique_jobs.iterrows():

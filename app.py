@@ -91,7 +91,7 @@ def generate_next_item_code(dept_name, current_master_df):
     next_num = max_num + 1
     return f"{prefix}-{next_num:03d}"
 
-# ฟังก์ชัน Export ข้อมูลเป็น Google Sheets ตามเทมเพลต Food Requisition Form
+# ฟังก์ชัน Export ข้อมูลลง Google Sheets (อัปเดตเข้าไฟล์แม่แบบของคุณโดยตรง)
 def export_to_google_sheet(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     try:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -102,9 +102,13 @@ def export_to_google_sheet(draft_df, event_type, pax, to_dept, no_func, rec_date
         creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
         client = gspread.authorize(creds)
         
-        sheet_title = f"Food_Requisition_{event_type}_{no_func}"
-        sh = client.create(sheet_title)
+        # SPREADSHEET ID ที่ตั้งค่าไว้จากไฟล์ของคุณ
+        SPREADSHEET_ID = "1itbFLz2T4Va3ZvpLUn5uvQ-eGsk7UFRWz-qOSde9OeA"
+        sh = client.open_by_key(SPREADSHEET_ID)
         worksheet = sh.get_worksheet(0)
+        
+        # เคลียร์ข้อมูลเดิมในตารางออกก่อน
+        worksheet.clear()
         
         header_data = [
             ["IMPACT EXHIBITION MANAGEMENT CO.,LTD.", "", "", "", ""],
@@ -134,10 +138,10 @@ def export_to_google_sheet(draft_df, event_type, pax, to_dept, no_func, rec_date
         
         full_content = header_data + items_data + footer_data
         worksheet.update('A1', full_content)
-        sh.share('', perm_type='anyone', role='reader')
+        
         return sh.url
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการสร้าง Google Sheets: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการอัปเดต Google Sheets: {e}")
         return None
 
 master_df = load_master_recipes()

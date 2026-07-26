@@ -258,7 +258,6 @@ def login_page():
 def main_kitchen_page():
     col1, col2 = st.columns([8, 1])
     with col1: 
-        # ข้อที่ 1: เปลี่ยนชื่อหัวข้อหลัก
         st.title("🍳 ออเดอร์สินค้าครัวเมน (Main Kitchen)")
     with col2:
         if st.button("ออกจากระบบ"):
@@ -298,8 +297,7 @@ def main_kitchen_page():
         
     st.markdown("---")
     
-    # --- ส่วนที่ 2: เลือกเมนูอาหาร ---
-    # ข้อที่ 2: เปลี่ยนชื่อหัวข้อส่วนที่ 2
+    # --- ส่วนที่ 2: เลือกเมนูอาหาร & สินค้าเพิ่มเติม ---
     st.header("🛒 2. เลือกเมนู และ ปริมาณวัตถุดิบ")
     menu_list = master_df['Food_Name'].dropna().unique() if 'Food_Name' in master_df.columns else []
     selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", menu_list) if len(menu_list) > 0 else None
@@ -326,7 +324,6 @@ def main_kitchen_page():
                     edited_butcher_df = st.data_editor(b_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
                 else: st.info("ไม่มีรายการ")
 
-        # ข้อที่ 3: เปลี่ยนชื่อปุ่มเพิ่มรายการ
         if st.button(f"➕ เพิ่ม {selected_menu}"):
             if event_type == "": st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
             else:
@@ -334,7 +331,6 @@ def main_kitchen_page():
                 rec_str = format_date_th(receive_date)
                 use_str = format_date_th(use_date)
                 
-                # เวลาไทย UTC+7
                 now_th = datetime.utcnow() + timedelta(hours=7)
                 now_str = now_th.strftime("%d/%m/%Y %H:%M")
                 
@@ -352,10 +348,55 @@ def main_kitchen_page():
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
                     st.success(f"เพิ่มเมนู {selected_menu} เรียบร้อย!")
 
+    # 🟢 ส่วนที่เพิ่มใหม่: แบบฟอร์มเพิ่มรายการวัตถุดิบพิเศษ (นอกเหนือจาก Recipe)
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("➕ กรอกวัตถุดิบเพิ่มเติมพิเศษ (นอกเหนือจากสูตร Recipe)", expanded=False):
+        st.info("💡 ใช้ในกรณีต้องการสั่งวัตถุดิบเพิ่มเติมที่ไม่มีในสูตรอาหาร เช่น ผักตกแต่งพิเศษ, ซอสปรุงรสเพิ่มเติม ฯลฯ")
+        
+        custom_c1, custom_c2, custom_c3, custom_c4 = st.columns([2, 4, 2, 2])
+        with custom_c1:
+            custom_dept = st.selectbox("ครัวที่รับผิดชอบ:", ["ครัว Prep", "ครัว บุชเชอร์"], key="custom_dept")
+        with custom_c2:
+            custom_desc = st.text_input("ชื่อวัตถุดิบเพิ่มเติม:", placeholder="เช่น ผักชีฝรั่ง, พริกไทยอ่อน...", key="custom_desc")
+        with custom_c3:
+            custom_qty = st.number_input("จำนวน:", min_value=0.0, value=1.0, step=0.5, key="custom_qty")
+        with custom_c4:
+            custom_unit = st.text_input("หน่วย:", placeholder="เช่น กก., แพ็ค, ถุง...", key="custom_unit")
+            
+        custom_menu_ref = st.text_input("ชื่อเมนู / หมายเหตุอ้างอิง (เว้นว่างได้):", placeholder="เช่น สั่งพิเศษสำหรับไลน์บุฟเฟต์...", key="custom_menu_ref")
+        
+        if st.button("➕ เพิ่มวัตถุดิบพิเศษลงในออเดอร์", type="primary"):
+            if event_type == "":
+                st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
+            elif custom_desc.strip() == "":
+                st.error("กรุณากรอก 'ชื่อวัตถุดิบเพิ่มเติม' ครับ")
+            else:
+                rec_str = format_date_th(receive_date)
+                use_str = format_date_th(use_date)
+                now_th = datetime.utcnow() + timedelta(hours=7)
+                now_str = now_th.strftime("%d/%m/%Y %H:%M")
+                
+                menu_text = custom_menu_ref.strip() if custom_menu_ref.strip() != "" else "รายการเพิ่มเติมพิเศษ"
+                
+                custom_item = {
+                    'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
+                    'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 
+                    'เมนู': menu_text,
+                    'วัตถุดิบ': custom_desc.strip(), 
+                    'ครัวที่รับผิดชอบ': custom_dept,
+                    'จำนวน': custom_qty, 
+                    'หน่วย': custom_unit.strip() if custom_unit.strip() != "" else "หน่วย", 
+                    'สถานะ': '🔴 รอรับออเดอร์',
+                    'วันที่สั่ง': now_str
+                }
+                
+                st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame([custom_item])], ignore_index=True)
+                st.success(f"เพิ่มวัตถุดิบพิเศษ '{custom_desc}' ({custom_dept}) เรียบร้อยแล้ว!")
+                st.rerun()
+
     st.markdown("---")
     
     # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ---
-    # ข้อที่ 4: เปลี่ยนชื่อหัวข้อส่วนที่ 3
     st.header("📤 3. รายการวัตถุดิบ")
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
@@ -394,7 +435,6 @@ def main_kitchen_page():
                     st.session_state.draft_orders = st.session_state.draft_orders.drop(to_del).reset_index(drop=True)
                     st.rerun()
 
-        # ข้อที่ 5: เปลี่ยนชื่อปุ่มยืนยัน
         with c_submit:
             if st.button("✅ ยืนยันใบออเดอร์", type="primary", use_container_width=True):
                 for _, row in st.session_state.draft_orders.iterrows():
@@ -406,7 +446,6 @@ def main_kitchen_page():
                 st.rerun()
 
         st.markdown("---")
-        # ข้อที่ 6: เปลี่ยนชื่อหัวข้อตัวอย่างแบบฟอร์ม
         st.header("🖨️ ตัวอย่างแบบฟอร์มสำหรับสั่งพิมพ์")
         
         html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)

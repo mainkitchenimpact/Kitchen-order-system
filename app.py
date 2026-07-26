@@ -93,7 +93,7 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO (แสดงวันที่แบบ วัน/เดือน/ปี)
+# 4. ฟังก์ชันสร้าง HTML แบบฟอร์มสำหรับสั่งพิมพ์ (ขึ้นแผ่นที่ 2 เมื่อเกิน 18 รายการ)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
@@ -257,7 +257,9 @@ def login_page():
 # ==========================================
 def main_kitchen_page():
     col1, col2 = st.columns([8, 1])
-    with col1: st.title("🍳 ศูนย์บัญชาการ: ครัวเมน (Main Kitchen)")
+    with col1: 
+        # ข้อที่ 1: เปลี่ยนชื่อหัวข้อหลัก
+        st.title("🍳 ออเดอร์สินค้าครัวเมน (Main Kitchen)")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
@@ -297,7 +299,8 @@ def main_kitchen_page():
     st.markdown("---")
     
     # --- ส่วนที่ 2: เลือกเมนูอาหาร ---
-    st.header("🛒 2. เลือกและจัดเตรียมเมนูอาหาร")
+    # ข้อที่ 2: เปลี่ยนชื่อหัวข้อส่วนที่ 2
+    st.header("🛒 2. เลือกเมนู และ ปริมาณวัตถุดิบ")
     menu_list = master_df['Food_Name'].dropna().unique() if 'Food_Name' in master_df.columns else []
     selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", menu_list) if len(menu_list) > 0 else None
 
@@ -323,7 +326,8 @@ def main_kitchen_page():
                     edited_butcher_df = st.data_editor(b_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
                 else: st.info("ไม่มีรายการ")
 
-        if st.button(f"➕ เพิ่ม '{selected_menu}' ลงในรายการสรุป"):
+        # ข้อที่ 3: เปลี่ยนชื่อปุ่มเพิ่มรายการ
+        if st.button(f"➕ เพิ่ม {selected_menu}"):
             if event_type == "": st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
             else:
                 new_drafts = []
@@ -350,8 +354,9 @@ def main_kitchen_page():
 
     st.markdown("---")
     
-    # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ISO ---
-    st.header("📤 3. สรุปรายการในงานนี้")
+    # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ---
+    # ข้อที่ 4: เปลี่ยนชื่อหัวข้อส่วนที่ 3
+    st.header("📤 3. รายการวัตถุดิบ")
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
     else:
@@ -389,8 +394,9 @@ def main_kitchen_page():
                     st.session_state.draft_orders = st.session_state.draft_orders.drop(to_del).reset_index(drop=True)
                     st.rerun()
 
+        # ข้อที่ 5: เปลี่ยนชื่อปุ่มยืนยัน
         with c_submit:
-            if st.button("✅ ยืนยันการส่งออเดอร์เข้าฐานข้อมูล Firebase", type="primary", use_container_width=True):
+            if st.button("✅ ยืนยันใบออเดอร์", type="primary", use_container_width=True):
                 for _, row in st.session_state.draft_orders.iterrows():
                     o_data = row.to_dict()
                     o_data['timestamp'] = firestore.SERVER_TIMESTAMP
@@ -400,12 +406,13 @@ def main_kitchen_page():
                 st.rerun()
 
         st.markdown("---")
-        st.header("🖨️ ตัวอย่างแบบฟอร์ม ISO สำหรับสั่งพิมพ์")
+        # ข้อที่ 6: เปลี่ยนชื่อหัวข้อตัวอย่างแบบฟอร์ม
+        st.header("🖨️ ตัวอย่างแบบฟอร์มสำหรับสั่งพิมพ์")
         
         html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
         components.html(html_view, height=750 * total_p, scrolling=True)
 
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ (เรียงใหม่อยู่บนสุด) ---
+    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ ---
     st.markdown("---")
     st.header("📊 ประวัติการสั่งออเดอร์ทั้งหมด")
     
@@ -414,20 +421,16 @@ def main_kitchen_page():
         if 'วันที่สั่ง' not in all_orders_df.columns:
             all_orders_df['วันที่สั่ง'] = '-'
             
-        # จัดกลุ่มออเดอร์ตาม To (ชื่องาน), ประเภทงาน, วันที่สั่ง
         unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
-        
-        # 🟢 เรียงลำดับจากใหม่อยู่ข้างบน ไล่ลงมา (Reverse Index / Sort)
         unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
         
-        # Header สำหรับตารางประวัติ
         p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
         p_c1.markdown("**วันที่และเวลาสั่ง**")
         p_c2.markdown("**ชื่องาน (To)**")
         p_c3.markdown("**ประเภทงาน**")
         p_c4.markdown("**จำนวนคน**")
         p_c5.markdown("**วันที่ใช้สินค้า**")
-        p_c6.markdown("**ดาวน์โหลด / พิมพ์เอกสาร ISO**")
+        p_c6.markdown("**ดาวน์โหลด / พิมพ์เอกสาร**")
         p_c7.markdown("**สถานะ**")
         st.markdown("---")
 
@@ -440,7 +443,6 @@ def main_kitchen_page():
             job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
             job_order_date = job.get('วันที่สั่ง', '-')
             
-            # ดึงรายการวัตถุดิบทั้งหมดของงานนี้
             job_items = all_orders_df[
                 (all_orders_df['To'] == job_to) & 
                 (all_orders_df['ประเภทงาน'] == job_event) &
@@ -457,16 +459,14 @@ def main_kitchen_page():
             col4.write(str(job_pax))
             col5.write(job_use_date)
             
-            # ปุ่มพิมพ์แบบฟอร์ม ISO
             with col6:
                 if st.button(f"🖨️ พิมพ์/ดูเอกสาร", key=f"btn_print_{idx}"):
                     st.session_state[f"show_modal_{idx}"] = not st.session_state.get(f"show_modal_{idx}", False)
 
             col7.write(main_status)
 
-            # แสดง Pop-up ตาราง ISO
             if st.session_state.get(f"show_modal_{idx}", False):
-                with st.expander(f"📄 แบบฟอร์ม ISO งาน: {job_to} ({job_event})", expanded=True):
+                with st.expander(f"📄 แบบฟอร์มงาน: {job_to} ({job_event})", expanded=True):
                     hist_html, hist_pages = generate_printable_html(
                         job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
                     )

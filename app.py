@@ -658,7 +658,7 @@ def receiver_kitchen_page(dept_name):
 
             current_status = job_items['สถานะ'].iloc[0] if not job_items.empty and 'สถานะ' in job_items.columns else '🔴 รอรับออเดอร์'
 
-            # 🟢 ย่อการ์ดไว้เป็นค่าเริ่มต้น (expanded=False)
+            # ย่อการ์ดไว้เป็นค่าเริ่มต้น (expanded=False)
             with st.expander(f"📌 งาน: {job_to} | ประเภท: {job_event} | วันที่รับสินค้า: {job_rec_date} | สถานะ: {current_status}", expanded=False):
                 m_col1, m_col2, m_col3, m_col4 = st.columns([2, 2, 2, 3])
                 m_col1.write(f"**จำนวนคน:** {job_pax} Pax")
@@ -681,7 +681,7 @@ def receiver_kitchen_page(dept_name):
                 st.markdown("---")
                 st.markdown("**✏️ รายการวัตถุดิบ (สามารถแก้ไขชื่อสินค้าและจำนวนได้):**")
                 
-                # 🟢 ตารางให้ครัว Prep แก้ไขชื่อและปริมาณสินค้า
+                # ตารางให้ครัว Prep แก้ไขชื่อและปริมาณสินค้า
                 edit_cols = ['วัตถุดิบ', 'จำนวน', 'หน่วย', 'เมนู', 'doc_id']
                 available_cols = [c for c in edit_cols if c in job_items.columns]
                 
@@ -735,7 +735,7 @@ def receiver_kitchen_page(dept_name):
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 🟢 ช่องหมายเหตุสำหรับการสื่อสาร (เช็คความปลอดภัยตารางว่างเรียบร้อย)
+                # ช่องหมายเหตุสำหรับการสื่อสาร
                 current_remark = ""
                 if not job_items.empty and 'หมายเหตุ' in job_items.columns:
                     val = job_items['หมายเหตุ'].iloc[0]
@@ -783,13 +783,28 @@ def receiver_kitchen_page(dept_name):
     with tab3:
         st.header("📜 ประวัติการบันทึกแก้ไขวัตถุดิบ (Audit Log)")
         logs_df = load_history_logs()
-        if not logs_df.empty:
+        if not logs_df.empty and 'editor_dept' in logs_df.columns:
             dept_logs = logs_df[logs_df['editor_dept'] == target_dept].copy()
             if not dept_logs.empty:
-                dept_logs = dept_logs.sort_values(by='edit_time', ascending=False)
-                show_cols = ['edit_time', 'job_to', 'orig_desc', 'new_desc', 'orig_qty', 'new_qty', 'unit']
-                dept_logs.columns = ['เวลาที่แก้ไข', 'ชื่องาน (To)', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย']
-                st.dataframe(dept_logs, use_container_width=True, hide_index=True)
+                # 🟢 ปรับปรุงการเปลี่ยนชื่อคอลัมน์อย่างปลอดภัย
+                rename_map = {
+                    'edit_time': 'เวลาที่แก้ไข',
+                    'job_to': 'ชื่องาน (To)',
+                    'orig_desc': 'ชื่อเดิม',
+                    'new_desc': 'ชื่อใหม่',
+                    'orig_qty': 'จำนวนเดิม',
+                    'new_qty': 'จำนวนใหม่',
+                    'unit': 'หน่วย'
+                }
+                dept_logs = dept_logs.rename(columns=rename_map)
+                
+                # เลือกแสดงเฉพาะคอลัมน์ที่ต้องการแบบเรียงลำดับ
+                show_cols = [c for c in ['เวลาที่แก้ไข', 'ชื่องาน (To)', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in dept_logs.columns]
+                
+                if 'เวลาที่แก้ไข' in dept_logs.columns:
+                    dept_logs = dept_logs.sort_values(by='เวลาที่แก้ไข', ascending=False)
+                    
+                st.dataframe(dept_logs[show_cols], use_container_width=True, hide_index=True)
             else:
                 st.info("ยังไม่มีประวัติการแก้ไขข้อมูลวัตถุดิบในครัวนี้")
         else:

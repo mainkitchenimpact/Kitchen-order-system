@@ -26,7 +26,7 @@ db = firestore.client()
 # 2. กำหนดโครงสร้างตารางข้อมูล
 # ==========================================
 columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
-                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ', 'วันที่สั่ง', 'หมายเหตุ']
+                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ', 'วันที่สั่ง', 'หมายเหตุ', 'is_printed']
 
 if 'draft_orders' not in st.session_state:
     st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
@@ -352,7 +352,7 @@ def main_kitchen_page():
                                 'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
                                 'วัตถุดิบ': row.get('Item_Description', '-'), 'ครัวที่รับผิดชอบ': dept_name,
                                 'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
-                                'วันที่สั่ง': now_str, 'หมายเหตุ': ''
+                                'วันที่สั่ง': now_str, 'หมายเหตุ': '', 'is_printed': False
                             })
                 if new_drafts:
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
@@ -397,7 +397,8 @@ def main_kitchen_page():
                     'หน่วย': custom_unit.strip() if custom_unit.strip() != "" else "หน่วย", 
                     'สถานะ': '🔴 รอรับออเดอร์',
                     'วันที่สั่ง': now_str,
-                    'หมายเหตุ': ''
+                    'หมายเหตุ': '',
+                    'is_printed': False
                 }
                 
                 st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame([custom_item])], ignore_index=True)
@@ -461,7 +462,7 @@ def main_kitchen_page():
         html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
         components.html(html_view, height=750 * total_p, scrolling=True)
 
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ & ประวัติการแก้ไขจากครัวเตรียม ---
+    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ ---
     st.markdown("---")
     st.header("📊 ประวัติการสั่งออเดอร์ และการแจ้งเตือนจากครัวเตรียม")
     
@@ -518,7 +519,6 @@ def main_kitchen_page():
 
                 col7.write(main_status)
 
-                # แสดงข้อความหมายเหตุสื่อสารจากครัว Prep/Butcher
                 remarks_in_job = [str(r).strip() for r in job_items['หมายเหตุ'].dropna().unique() if str(r).strip() != '']
                 if remarks_in_job:
                     st.info(f"💬 **หมายเหตุจากครัวเตรียม ({job_to}):** {', '.join(remarks_in_job)}")
@@ -660,6 +660,7 @@ def receiver_kitchen_page(dept_name):
         
         if 'วันที่สั่ง' not in my_orders.columns: my_orders['วันที่สั่ง'] = '-'
         if 'หมายเหตุ' not in my_orders.columns: my_orders['หมายเหตุ'] = ''
+        if 'is_printed' not in my_orders.columns: my_orders['is_printed'] = False
             
         unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
         unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
@@ -685,13 +686,27 @@ def receiver_kitchen_page(dept_name):
                 (my_orders['วันที่สั่ง'] == job_order_date)
             ].reset_index(drop=True)
 
-            # 🟢 ข้อ 1 & 2: เอาสถานะออก / แสดง: งาน | ประเภท | จำนวนคน | วันที่รับสินค้า | วันที่ใช้งาน
-            header_text = f"📌 งาน: {job_to} | ประเภท: {job_event} | {job_pax} คน | วันที่รับสินค้า: {job_rec_date} | วันที่ใช้งาน: {job_use_date}"
+            # เช็คว่างานนี้เคยพิมพ์หรือยัง (ถ้ามีอย่างน้อย 1 รายการเป็น True ถือว่าพิมพ์แล้ว)
+            is_job_printed = any(job_items['is_printed'].fillna(False))
+            print_status_text = " : [🟢 พิมพ์ใบเบิกแล้ว]" if is_job_printed else ""
+
+            # แสดงหัวข้อการ์ด (งาน | ประเภท | จำนวนคน | วันที่รับสินค้า | วันที่ใช้งาน | สถานะพิมพ์แล้ว)
+            header_text = f"📌 งาน: {job_to} | ประเภท: {job_event} | {job_pax} คน | วันที่รับสินค้า: {job_rec_date} | วันที่ใช้งาน: {job_use_date}{print_status_text}"
             
             with st.expander(header_text, expanded=False):
-                # 🟢 ข้อ 4: ย้ายปุ่ม "พิมพ์ใบเบิก" ขึ้นมาไว้ข้างบนสุด
-                if st.button(f"🖨️ พิมพ์ใบเบิก", key=f"rec_btn_print_{idx}"):
-                    st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
+                # 🟢 ย้ายปุ่มพิมพ์ใบเบิก + ช่องติ๊ก "พิมพ์แล้ว" มาไว้ด้านบนสุดของการ์ด
+                p_col1, p_col2 = st.columns([3, 7])
+                with p_col1:
+                    if st.button(f"🖨️ พิมพ์ใบเบิก", key=f"rec_btn_print_{idx}"):
+                        st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
+                with p_col2:
+                    # ช่องติ๊กพิมพ์แล้ว
+                    chk_printed = st.checkbox("☑️ พิมพ์แล้ว", value=is_job_printed, key=f"chk_printed_{idx}")
+                    if chk_printed != is_job_printed:
+                        for doc_id in job_items['doc_id']:
+                            db.collection('orders').document(doc_id).update({'is_printed': chk_printed})
+                        st.success("บันทึกสถานะการพิมพ์เรียบร้อยแล้ว!")
+                        st.rerun()
 
                 if st.session_state.get(f"rec_show_modal_{idx}", False):
                     with st.container():
@@ -703,7 +718,6 @@ def receiver_kitchen_page(dept_name):
                         components.html(hist_html, height=750 * hist_pages, scrolling=True)
 
                 st.markdown("---")
-                # 🟢 ข้อ 3: เมื่อกดขยายจะเห็น "วันที่สั่งออเดอร์"
                 st.markdown(f"🗓️ **วันที่สั่งออเดอร์:** `{job_order_date}`")
 
                 st.markdown("**✏️ รายการวัตถุดิบ (สามารถแก้ไขชื่อสินค้าและจำนวนได้):**")

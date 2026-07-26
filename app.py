@@ -330,7 +330,7 @@ def main_kitchen_page():
                 rec_str = format_date_th(receive_date)
                 use_str = format_date_th(use_date)
                 
-                # คำนวณเวลาประเทศไทย (UTC+7) สำหรับช่อง "วันที่สั่ง"
+                # เวลาไทย UTC+7
                 now_th = datetime.utcnow() + timedelta(hours=7)
                 now_str = now_th.strftime("%d/%m/%Y %H:%M")
                 
@@ -402,11 +402,10 @@ def main_kitchen_page():
         st.markdown("---")
         st.header("🖨️ ตัวอย่างแบบฟอร์ม ISO สำหรับสั่งพิมพ์")
         
-        # แสดงตารางแบบฟอร์ม ISO
         html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
         components.html(html_view, height=750 * total_p, scrolling=True)
 
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ ---
+    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ (เรียงใหม่อยู่บนสุด) ---
     st.markdown("---")
     st.header("📊 ประวัติการสั่งออเดอร์ทั้งหมด")
     
@@ -415,8 +414,11 @@ def main_kitchen_page():
         if 'วันที่สั่ง' not in all_orders_df.columns:
             all_orders_df['วันที่สั่ง'] = '-'
             
-        # จัดกลุ่มโดยใช้ To (ชื่องาน), ประเภทงาน, วันที่สั่ง
+        # จัดกลุ่มออเดอร์ตาม To (ชื่องาน), ประเภทงาน, วันที่สั่ง
         unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+        
+        # 🟢 เรียงลำดับจากใหม่อยู่ข้างบน ไล่ลงมา (Reverse Index / Sort)
+        unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
         
         # Header สำหรับตารางประวัติ
         p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
@@ -449,11 +451,11 @@ def main_kitchen_page():
             main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
 
             col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
-            col1.write(job_order_date)              # เวลาไทย UTC+7
+            col1.write(job_order_date)
             col2.write(f"**{job_to}**")
             col3.write(job_event)
             col4.write(str(job_pax))
-            col5.write(job_use_date)                # DD/MM/YYYY
+            col5.write(job_use_date)
             
             # ปุ่มพิมพ์แบบฟอร์ม ISO
             with col6:

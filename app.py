@@ -35,7 +35,6 @@ if 'draft_orders' not in st.session_state:
 if 'logged_in_dept' not in st.session_state:
     st.session_state.logged_in_dept = None
 
-# Session State สำหรับฟอร์มรายละเอียดงาน
 if 'event_type_input' not in st.session_state: st.session_state.event_type_input = ""
 if 'no_function_input' not in st.session_state: st.session_state.no_function_input = ""
 if 'pax_input' not in st.session_state: st.session_state.pax_input = 70
@@ -44,7 +43,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูล และจัดฟอร์แมตวันที่
+# 3. ฟังก์ชันดึงข้อมูล (พร้อม Auto-Seed เมื่อ DB ถ่ายว่าง)
 # ==========================================
 def format_date_th(date_val):
     if not date_val or str(date_val) == '-':
@@ -65,7 +64,22 @@ def load_master_recipes():
             d = doc.to_dict()
             d['doc_id'] = doc.id 
             data.append(d)
-        return pd.DataFrame(data) if data else pd.DataFrame()
+            
+        if not data:
+            # ✨ AUTO-SEED: หากฐานข้อมูลใหม่ว่างเปล่า ให้ยัดข้อมูลตัวอย่างใส่ให้อัตโนมัติทันที
+            initial_recipes = [
+                {'Recipe_Code': 'EU001', 'Food_Name': 'แกะอบซอสไทม์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-001', 'Item_Description': 'ซี่โครงแกะสไลด์', 'Std_Quantity': 1.0, 'Unit': 'Pc.'},
+                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-002', 'Item_Description': 'ไก่กรอบปาปริก้า', 'Std_Quantity': 1.0, 'Unit': 'Pc.'},
+                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PA-001', 'Item_Description': 'มายองเนส', 'Std_Quantity': 2.0, 'Unit': 'Pack'},
+                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PA-002', 'Item_Description': 'ครีมสลัด', 'Std_Quantity': 1.0, 'Unit': 'Pack'},
+                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PA-003', 'Item_Description': 'มันฝรั่งหั่นเต๋า', 'Std_Quantity': 0.05, 'Unit': 'Kg.'},
+                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'เนื้อหมูหั่นเต๋าใหญ่', 'Std_Quantity': 0.1, 'Unit': 'Kg.'}
+            ]
+            for item in initial_recipes:
+                db.collection('master_recipes').add(item)
+            return pd.DataFrame(initial_recipes)
+            
+        return pd.DataFrame(data)
     except Exception as e:
         st.error(f"ไม่สามารถดึงข้อมูลสูตรอาหารได้: {e}")
         return pd.DataFrame()
@@ -106,7 +120,7 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์
+# 4. ฟังก์ชันสร้าง HTML แบบฟอร์มสำหรับสั่งพิมพ์
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].str.strip() == 'ครัว Prep'].reset_index(drop=True)
@@ -239,7 +253,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
     """
     return html_content, total_pages
 
-master_df = load_master_recipes()
 st.set_page_config(page_title="ระบบสั่งวัตถุดิบครัว", layout="wide")
 
 # ==========================================
@@ -267,6 +280,7 @@ def main_kitchen_page():
             st.rerun()
             
     st.markdown("---")
+    master_df = load_master_recipes()
     if master_df.empty:
         st.warning("⚠️ ยังไม่มีข้อมูลสูตรอาหาร กรุณาไปเพิ่มข้อมูลที่เมนู Admin ก่อนครับ")
         return
@@ -441,7 +455,6 @@ def admin_page():
                         }
                         db.collection('master_recipes').add(new_data)
                         
-                        # อัปเดตตารางเพื่อไม่ให้ Item Code ซ้ำกันใน Batch
                         temp_master = pd.concat([temp_master, pd.DataFrame([new_data])], ignore_index=True)
                         success_count += 1
                 if success_count > 0:

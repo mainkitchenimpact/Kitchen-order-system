@@ -701,7 +701,7 @@ def receiver_kitchen_page(dept_name):
                         st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
                 with p_col2:
                     # ช่องติ๊กพิมพ์แล้ว
-                    chk_printed = st.checkbox("☑️ พิมพ์แล้ว", value=is_job_printed, key=f"chk_printed_{idx}")
+                    chk_printed = st.checkbox("พิมพ์แล้ว", value=is_job_printed, key=f"chk_printed_{idx}")
                     if chk_printed != is_job_printed:
                         for doc_id in job_items['doc_id']:
                             db.collection('orders').document(doc_id).update({'is_printed': chk_printed})

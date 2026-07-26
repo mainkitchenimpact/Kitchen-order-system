@@ -243,7 +243,7 @@ def login_page():
 # ==========================================
 def main_kitchen_page():
     col1, col2 = st.columns([8, 1])
-    with col1: st.title("🍳 ศูนย์บัญชาการ: ครัวเมน (Main Kitchen)")
+    with col1: st.title("แบบฟอร์มการออเดอร์สินค้าครัวเมน (Main Kitchen)")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None

@@ -72,7 +72,11 @@ def load_master_recipes():
 def load_orders():
     try:
         docs = db.collection('orders').stream()
-        data = [doc.to_dict() for doc in docs]
+        data = []
+        for doc in docs:
+            d = doc.to_dict()
+            d['doc_id'] = doc.id
+            data.append(d)
         return pd.DataFrame(data) if data else pd.DataFrame(columns=columns_format)
     except Exception as e:
         st.error(f"ไม่สามารถดึงข้อมูลออเดอร์ได้: {e}")
@@ -348,7 +352,6 @@ def main_kitchen_page():
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
                     st.success(f"เพิ่มเมนู {selected_menu} เรียบร้อย!")
 
-    # 🟢 ส่วนที่เพิ่มใหม่: แบบฟอร์มเพิ่มรายการวัตถุดิบพิเศษ (นอกเหนือจาก Recipe)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("➕ กรอกวัตถุดิบเพิ่มเติมพิเศษ (นอกเหนือจากสูตร Recipe)", expanded=False):
         st.info("💡 ใช้ในกรณีต้องการสั่งวัตถุดิบเพิ่มเติมที่ไม่มีในสูตรอาหาร เช่น ผักตกแต่งพิเศษ, ซอสปรุงรสเพิ่มเติม ฯลฯ")
@@ -584,29 +587,113 @@ def admin_page():
                 st.rerun()
 
 # ==========================================
-# 8. หน้าของครัวรับงาน (Prep, Butcher, Bakery)
+# 8. หน้าของครัวรับงาน (Prep, Butcher, Bakery) - อัปเดตเต็มรูปแบบ
 # ==========================================
 def receiver_kitchen_page(dept_name):
+    dept_mapping = {"Prep": "ครัว Prep", "Butcher": "ครัว บุชเชอร์", "Bakery": "ครัว Bakery"}
+    target_dept = dept_mapping.get(dept_name, dept_name)
+    
     col1, col2 = st.columns([8, 1])
-    with col1: st.title(f"🔪 หน้าจอรับออเดอร์: {dept_name}")
+    with col1: st.title(f"🔪 หน้าจอจัดการออเดอร์: {target_dept}")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
             st.rerun()
             
     st.markdown("---")
-    if st.button("🔄 ดึงออเดอร์ล่าสุด"): st.rerun()
-    st.header("📥 รายการออเดอร์ที่ต้องเตรียม")
     
-    dept_mapping = {"Prep": "ครัว Prep", "Butcher": "ครัว บุชเชอร์", "Bakery": "ครัว Bakery"}
-    target_dept = dept_mapping.get(dept_name, dept_name)
+    if st.button("🔄 อัปเดตข้อมูลล่าสุด"): 
+        st.rerun()
+
     all_orders = load_orders()
-    
-    if not all_orders.empty:
-        my_orders = all_orders[all_orders['ครัวที่รับผิดชอบ'] == target_dept]
-        if my_orders.empty: st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
-        else: st.dataframe(my_orders.drop(columns=['timestamp'], errors='ignore'), use_container_width=True)
-    else: st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
+    if all_orders.empty:
+        st.info("🎉 ยังไม่มีออเดอร์เข้ามาในระบบครับ")
+        return
+
+    # กรองเฉพาะออเดอร์ของครัวนี้
+    my_orders = all_orders[all_orders['ครัวที่รับผิดชอบ'] == target_dept].reset_index(drop=True)
+    if my_orders.empty:
+        st.info(f"🎉 ยังไม่มีออเดอร์ของ {target_dept} ในขณะนี้ครับ")
+        return
+
+    # สร้าง แท็บ สลับมุมมอง: 1. จัดการออเดอร์ตามงาน | 2. สรุปวัตถุดิบรวมประจำวัน
+    tab1, tab2 = st.tabs(["📦 รายการออเดอร์ตามงาน", "📊 สรุปยอดวัตถุดิบรวมประจำวัน"])
+
+    with tab1:
+        st.header(f"📥 ออเดอร์วัตถุดิบสำหรับ {target_dept}")
+        
+        # จัดกลุ่มตามงาน (To + วันที่สั่ง)
+        if 'วันที่สั่ง' not in my_orders.columns:
+            my_orders['วันที่สั่ง'] = '-'
+            
+        unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+        unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True) # ใหม่อยู่บน
+
+        for idx, job in unique_jobs.iterrows():
+            job_to = job.get('To', '-')
+            job_event = job.get('ประเภทงาน', '-')
+            job_pax = job.get('จำนวนคน', '-')
+            job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
+            job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
+            job_order_date = job.get('วันที่สั่ง', '-')
+            
+            # ดึงรายการวัตถุดิบของงานนี้
+            job_items = my_orders[
+                (my_orders['To'] == job_to) & 
+                (my_orders['ประเภทงาน'] == job_event) &
+                (my_orders['วันที่สั่ง'] == job_order_date)
+            ].reset_index(drop=True)
+
+            current_status = job_items['สถานะ'].iloc[0] if not job_items.empty and 'สถานะ' in job_items.columns else '🔴 รอรับออเดอร์'
+
+            # กรอบแต่ละงาน
+            with st.expander(f"📌 งาน: {job_to} | ประเภท: {job_event} | วันที่รับสินค้า: {job_rec_date} | สถานะปัจจุบัน: {current_status}", expanded=True):
+                m_col1, m_col2, m_col3, m_col4 = st.columns([2, 2, 2, 3])
+                m_col1.write(f"**จำนวนคน:** {job_pax} Pax")
+                m_col2.write(f"**วันที่ใช้สินค้า:** {job_use_date}")
+                m_col3.write(f"**สั่งเมื่อ:** {job_order_date}")
+
+                # ส่วนเปลี่ยนสถานะออเดอร์
+                with m_col4:
+                    status_options = ['🔴 รอรับออเดอร์', '🟡 กำลังเตรียมวัตถุดิบ', '🟢 พร้อมส่งมอบ (เสร็จสิ้น)']
+                    try:
+                        curr_idx = status_options.index(current_status)
+                    except ValueError:
+                        curr_idx = 0
+                    
+                    new_status = st.selectbox("เปลี่ยนสถานะ:", status_options, index=curr_idx, key=f"status_select_{idx}")
+                    
+                    if new_status != current_status:
+                        if st.button("💾 บันทึกสถานะ", key=f"btn_save_status_{idx}"):
+                            # อัปเดตสถานะลง Firebase
+                            for doc_id in job_items['doc_id']:
+                                db.collection('orders').document(doc_id).update({'สถานะ': new_status})
+                            st.success(f"อัปเดตสถานะเป็น '{new_status}' เรียบร้อยแล้ว!")
+                            st.rerun()
+
+                st.markdown("**📋 รายการวัตถุดิบที่ต้องเตรียม:**")
+                display_items = job_items[['เมนู', 'วัตถุดิบ', 'จำนวน', 'หน่วย', 'สถานะ']]
+                st.dataframe(display_items, use_container_width=True, hide_index=True)
+
+    with tab2:
+        st.header(f"📊 สรุปยอดรวมวัตถุดิบที่ต้องเตรียม ({target_dept})")
+        st.info("💡 หน้านี้จะรวมยอดจำนวนวัตถุดิบชนิดเดียวกันของทุกงานเข้าด้วยกัน เพื่อให้เตรียมของทีเดียวได้สะดวกยิ่งขึ้น")
+        
+        # ตัวกรองตามวันที่รับสินค้า
+        all_rec_dates = my_orders['วันที่รับสินค้า'].unique().tolist()
+        selected_filter_date = st.selectbox("เลือกวันที่รับสินค้า (Delivery Date):", ["ทั้งหมด"] + all_rec_dates)
+        
+        filtered_orders = my_orders.copy()
+        if selected_filter_date != "ทั้งหมด":
+            filtered_orders = filtered_orders[filtered_orders['วันที่รับสินค้า'] == selected_filter_date]
+
+        if not filtered_orders.empty:
+            # รวมกลุ่มตาม วัตถุดิบ และ หน่วย
+            summary_grouped = filtered_orders.groupby(['วัตถุดิบ', 'หน่วย'])['จำนวน'].sum().reset_index()
+            summary_grouped.columns = ['วัตถุดิบ', 'หน่วย', 'ยอดรวมจำนวนที่ต้องเตรียม']
+            st.dataframe(summary_grouped, use_container_width=True, hide_index=True)
+        else:
+            st.warning("ไม่มีรายการวัตถุดิบตามวันที่เลือก")
 
 # ==========================================
 # 9. ระบบควบคุมเส้นทางหน้าจอ (Router)

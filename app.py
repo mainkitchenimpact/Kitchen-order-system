@@ -283,7 +283,7 @@ def main_kitchen_page():
     st.markdown("---")
     
     # --- ส่วนที่ 2: เลือกเมนูอาหาร ---
-    st.header("🛒 2. เลือกและจัดเตรียมเมนูอาหาร")
+    st.header("🛒 2. เลือกเมนูและจำนวนวัตถุดิบ")
     menu_list = master_df['Food_Name'].dropna().unique() if 'Food_Name' in master_df.columns else []
     selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", menu_list) if len(menu_list) > 0 else None
 
@@ -334,7 +334,7 @@ def main_kitchen_page():
     st.markdown("---")
     
     # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ISO ---
-    st.header("📤 3. สรุปรายการในงานนี้")
+    st.header("📤 3. สรุปรายการ")
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
     else:
@@ -373,7 +373,7 @@ def main_kitchen_page():
                     st.rerun()
 
         with c_submit:
-            if st.button("✅ ยืนยันการส่งออเดอร์เข้าฐานข้อมูล Firebase", type="primary", use_container_width=True):
+            if st.button("✅ ยืนยันออเดอร์", type="primary", use_container_width=True):
                 for _, row in st.session_state.draft_orders.iterrows():
                     o_data = row.to_dict()
                     o_data['timestamp'] = firestore.SERVER_TIMESTAMP
@@ -383,7 +383,7 @@ def main_kitchen_page():
                 st.rerun()
 
         st.markdown("---")
-        st.header("🖨️ ตัวอย่างแบบฟอร์ม ISO สำหรับสั่งพิมพ์")
+        st.header("🖨️ ตัวอย่างแบบฟอร์ม สำหรับสั่งพิมพ์")
         rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
         use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
         

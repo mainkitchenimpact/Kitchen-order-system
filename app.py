@@ -43,7 +43,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูลจาก Firebase (ไม่ใช้ Cache เพื่อป้องกันค้าง)
+# 3. ฟังก์ชันดึงและจัดการข้อมูล
 # ==========================================
 def load_master_recipes():
     try:
@@ -179,7 +179,7 @@ def main_kitchen_page():
     with col1:
         st.title("🍳 ศูนย์บัญชาการ: ครัวเมน (Main Kitchen)")
     with col2:
-        if st.button("🚪 ออกจากระบบ"):
+        if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
             st.rerun()
             
@@ -379,4 +379,169 @@ def admin_page():
     with col1:
         st.title("⚙️ ระบบหลังบ้าน: จัดการสูตรอาหาร (Master Recipes)")
     with col2:
-        if st.button("🚪 ออกจาก
+        if st.button("ออกจากระบบ"):
+            st.session_state.logged_in_dept = None
+            st.rerun()
+            
+    st.markdown("---")
+    
+    st.header("➕ เพิ่มสูตรอาหารใหม่ (รองรับหลายวัตถุดิบพร้อมกัน)")
+    
+    with st.form("batch_add_recipe_form"):
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            recipe_code = st.text_input("รหัสสูตร (Recipe Code):", placeholder="เช่น EU001")
+            food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
+        with rc2:
+            kitchen_dept = st.selectbox("ครัวที่รับผิดชอบหลักสำหรับชุดนี้:", ["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"])
+            st.write("")
+            st.info("💡 เคล็ดลับ: ช่องรหัสวัตถุดิบ (Item Code) ด้านล่างจะถูกสร้างให้อัตโนมัติตามครัวที่คุณเลือกครับ")
+
+        st.markdown("---")
+        st.markdown("📋 **ตารางกรอกส่วนผสม/วัตถุดิบ (สามารถพิมพ์เพิ่มได้หลายบรรทัด)**")
+        
+        initial_data = []
+        for i in range(10):
+            initial_data.append({
+                "ชื่อวัตถุดิบ (Description)": "",
+                "อัตราส่วนต่อ 1 คน": 0.0,
+                "หน่วย": ""
+            })
+        
+        batch_df = pd.DataFrame(initial_data)
+        
+        edited_batch_df = st.data_editor(
+            batch_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key="batch_recipe_editor"
+        )
+            
+        submitted = st.form_submit_button("💾 บันทึกสูตรอาหารทั้งหมดลง Firebase", type="primary")
+        
+        if submitted:
+            if food_name.strip() == "":
+                st.error("กรุณากรอก 'ชื่อเมนูอาหาร' ก่อนบันทึกครับ")
+            else:
+                success_count = 0
+                temp_master = load_master_recipes()
+                
+                for _, row in edited_batch_df.iterrows():
+                    desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
+                    if desc != "" and desc != "nan":
+                        auto_code = generate_next_item_code(kitchen_dept, temp_master)
+                        
+                        qty = float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0
+                        unit_val = str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""
+                        
+                        new_data = {
+                            'Recipe_Code': recipe_code.strip(),
+                            'Food_Name': food_name.strip(),
+                            'Kitchen_Dept': kitchen_dept,
+                            'Item_Code': auto_code,
+                            'Item_Description': desc,
+                            'Std_Quantity': qty,
+                            'Unit': unit_val
+                        }
+                        db.collection('master_recipes').add(new_data)
+                        success_count += 1
+                        
+                        new_row_df = pd.DataFrame([new_data])
+                        temp_master = pd.concat([temp_master, new_row_df], ignore_index=True)
+                
+                if success_count > 0:
+                    st.success(f"บันทึกเมนู '{food_name}' สำเร็จ! เพิ่มวัตถุดิบเข้าระบบทั้งหมด {success_count} รายการ")
+                    st.rerun()
+                else:
+                    st.warning("กรุณากรอกข้อมูลวัตถุดิบอย่างน้อย 1 รายการในตารางครับ")
+
+    st.markdown("---")
+    st.header("📋 รายการสูตรอาหารทั้งหมดในฐานข้อมูล (Firebase)")
+    
+    current_master = load_master_recipes()
+    if not current_master.empty:
+        display_admin_df = current_master.copy()
+        display_admin_df.insert(0, '🗑️ ลบ', False)
+        
+        cols_to_show = ['🗑️ ลบ', 'Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit']
+        cols_to_show = [c for c in cols_to_show if c in display_admin_df.columns]
+        
+        edited_master = st.data_editor(
+            display_admin_df[cols_to_show],
+            use_container_width=True,
+            hide_index=True,
+            disabled=['Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'],
+            key="admin_master_editor"
+        )
+        
+        if st.button("❌ ลบรายการสูตรอาหารที่เลือก"):
+            to_delete_rows = edited_master[edited_master['🗑️ ลบ'] == True]
+            if not to_delete_rows.empty:
+                count = 0
+                for idx, row in to_delete_rows.iterrows():
+                    match_doc = current_master[
+                        (current_master['Food_Name'] == row['Food_Name']) & 
+                        (current_master['Item_Description'] == row['Item_Description'])
+                    ]
+                    for doc_id in match_doc['doc_id']:
+                        db.collection('master_recipes').document(doc_id).delete()
+                        count += 1
+                
+                st.success(f"ลบรายการออก {count} รายการเรียบร้อยแล้ว!")
+                st.rerun()
+            else:
+                st.warning("กรุณาติ๊กเลือกช่อง '🗑️ ลบ' หน้าวัตถุดิบที่ต้องการลบก่อนครับ")
+    else:
+        st.info("ยังไม่มีข้อมูลสูตรอาหารในระบบครับ")
+
+# ==========================================
+# 7. หน้าของครัวรับงาน (Prep, Butcher, Bakery)
+# ==========================================
+def receiver_kitchen_page(dept_name):
+    col1, col2 = st.columns([8, 1])
+    with col1:
+        st.title(f"🔪 หน้าจอรับออเดอร์: {dept_name}")
+    with col2:
+        if st.button("ออกจากระบบ"):
+            st.session_state.logged_in_dept = None
+            st.rerun()
+            
+    st.markdown("---")
+    
+    if st.button("🔄 ดึงออเดอร์ล่าสุด"):
+        st.rerun()
+        
+    st.header("📥 รายการออเดอร์ที่ต้องเตรียม")
+    
+    dept_mapping = {
+        "Prep": "ครัว Prep",
+        "Butcher": "ครัว บุชเชอร์",
+        "Bakery": "ครัว Bakery"
+    }
+    target_dept = dept_mapping.get(dept_name, dept_name)
+    
+    all_orders = load_orders()
+    if not all_orders.empty:
+        my_orders = all_orders[all_orders['ครัวที่รับผิดชอบ'] == target_dept]
+        
+        if my_orders.empty:
+            st.info("🎉 ยังไม่มีออเดอร์ของแผนกคุณเข้ามาในขณะนี้ครับ")
+        else:
+            display_df = my_orders.drop(columns=['timestamp'], errors='ignore')
+            st.dataframe(display_df, use_container_width=True)
+            st.info("💡 (ในอนาคตเราจะเพิ่มปุ่ม 'กดรับออเดอร์' ตรงนี้ เพื่อให้สถานะเปลี่ยนเป็นสีเขียวครับ)")
+    else:
+        st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
+
+# ==========================================
+# 8. ระบบควบคุมเส้นทางหน้าจอ (Router)
+# ==========================================
+if st.session_state.logged_in_dept is None:
+    login_page()
+elif st.session_state.logged_in_dept == "Main Kitchen":
+    main_kitchen_page()
+elif st.session_state.logged_in_dept == "Admin":
+    admin_page()
+else:
+    receiver_kitchen_page(st.session_state.logged_in_dept)

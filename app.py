@@ -4,6 +4,7 @@ from datetime import date, datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit.components.v1 as components
+import math
 
 # ==========================================
 # 1. การเชื่อมต่อ Firebase ผ่าน Streamlit Secrets
@@ -25,7 +26,7 @@ db = firestore.client()
 # 2. กำหนดโครงสร้างตารางข้อมูล
 # ==========================================
 columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
-                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ']
+                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ', 'วันที่สั่ง']
 
 if 'draft_orders' not in st.session_state:
     st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
@@ -42,7 +43,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูลและจัดการออเดอร์
+# 3. ฟังก์ชันดึงข้อมูล
 # ==========================================
 def load_master_recipes():
     try:
@@ -81,29 +82,102 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้างแบบฟอร์ม ISO แนวนอน (พร้อมรหัส PM38-FM-001 และ ฉบับที่ 1)
+# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO (รองรับการขึ้นแผ่นที่ 2 เมื่อเกิน 18 รายการ)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
     butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์'].reset_index(drop=True)
     
-    def render_rows(df):
-        rows_html = ""
-        max_rows = 18
-        for idx in range(max_rows):
-            if idx < len(df):
-                row = df.iloc[idx]
-                rows_html += f"""
-                <tr>
-                    <td style="text-align:center;">{idx+1}</td>
-                    <td style="text-align:center;">{row.get('จำนวน', 0)}</td>
-                    <td style="text-align:center;">{row.get('หน่วย', '')}</td>
-                    <td>{row.get('วัตถุดิบ', '')}</td>
-                    <td>{row.get('เมนู', '')}</td>
-                </tr>"""
-            else:
-                rows_html += "<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>"
-        return rows_html
+    ITEMS_PER_PAGE = 18
+    prep_pages = max(1, math.ceil(len(prep_items) / ITEMS_PER_PAGE))
+    butcher_pages = max(1, math.ceil(len(butcher_items) / ITEMS_PER_PAGE))
+    total_pages = max(prep_pages, butcher_pages)
+
+    pages_html = ""
+    
+    for p in range(total_pages):
+        # ดึงรายการของหน้านี้
+        prep_sub = prep_items.iloc[p*ITEMS_PER_PAGE : (p+1)*ITEMS_PER_PAGE]
+        butcher_sub = butcher_items.iloc[p*ITEMS_PER_PAGE : (p+1)*ITEMS_PER_PAGE]
+
+        def render_table_rows(df, start_idx):
+            rows_html = ""
+            for idx in range(ITEMS_PER_PAGE):
+                if idx < len(df):
+                    row = df.iloc[idx]
+                    rows_html += f"""
+                    <tr>
+                        <td style="text-align:center;">{start_idx + idx + 1}</td>
+                        <td style="text-align:center;">{row.get('จำนวน', 0)}</td>
+                        <td style="text-align:center;">{row.get('หน่วย', '')}</td>
+                        <td>{row.get('วัตถุดิบ', '')}</td>
+                        <td>{row.get('เมนู', '')}</td>
+                    </tr>"""
+                else:
+                    rows_html += "<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>"
+            return rows_html
+
+        page_break_style = "page-break-after: always;" if p < total_pages - 1 else ""
+
+        pages_html += f"""
+        <div class="page-sheet" style="{page_break_style}">
+            <div class="page-container">
+                <!-- ฝั่งซ้าย: ครัว Prep -->
+                <div class="form-box">
+                    <div class="doc-code-top">PM38-FM-001</div>
+                    <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
+                    <div class="sub-title">Food Requisition Form (หน้า {p+1}/{total_pages})</div>
+                    <table class="meta-table">
+                        <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
+                        <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
+                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
+                    </table>
+                    <table class="main-table">
+                        <thead>
+                            <tr><th rowspan="2" width="8%">No.</th><th colspan="2" width="28%">REQUESTED</th><th rowspan="2" width="34%">Description</th><th rowspan="2" width="30%">Menu</th></tr>
+                            <tr><th width="14%">Quantity</th><th width="14%">Unit</th></tr>
+                        </thead>
+                        <tbody>{render_table_rows(prep_sub, p*ITEMS_PER_PAGE)}</tbody>
+                    </table>
+                    <table class="meta-table">
+                        <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
+                        <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
+                    </table>
+                    <table class="footer-table">
+                        <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
+                    </table>
+                    <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
+                </div>
+
+                <!-- ฝั่งขวา: ครัว บุชเชอร์ -->
+                <div class="form-box">
+                    <div class="doc-code-top">PM38-FM-001</div>
+                    <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
+                    <div class="sub-title">Food Requisition Form (หน้า {p+1}/{total_pages})</div>
+                    <table class="meta-table">
+                        <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
+                        <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
+                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
+                    </table>
+                    <table class="main-table">
+                        <thead>
+                            <tr><th rowspan="2" width="8%">No.</th><th colspan="2" width="28%">REQUESTED</th><th rowspan="2" width="34%">Description</th><th rowspan="2" width="30%">Menu</th></tr>
+                            <tr><th width="14%">Quantity</th><th width="14%">Unit</th></tr>
+                        </thead>
+                        <tbody>{render_table_rows(butcher_sub, p*ITEMS_PER_PAGE)}</tbody>
+                    </table>
+                    <table class="meta-table">
+                        <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
+                        <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
+                    </table>
+                    <table class="footer-table">
+                        <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
+                    </table>
+                    <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
+                </div>
+            </div>
+        </div>
+        """
 
     html_content = f"""
     <!DOCTYPE html>
@@ -113,97 +187,34 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
         <style>
             @page {{ size: A4 landscape; margin: 5mm; }}
             body {{ font-family: 'Sarabun', 'Arial', sans-serif; font-size: 11px; margin: 0; padding: 10px; background-color: #fff; }}
+            .page-sheet {{ margin-bottom: 20px; }}
             .page-container {{ display: flex; justify-content: space-between; gap: 15px; width: 100%; }}
             .form-box {{ width: 49%; border: 2px solid #000; padding: 6px; box-sizing: border-box; position: relative; }}
-            
-            /* รหัสเอกสารมุมขวาบน */
             .doc-code-top {{ position: absolute; top: 6px; right: 8px; font-weight: bold; font-size: 10px; }}
-            
             .header-title {{ text-align: center; font-weight: bold; font-size: 12px; text-decoration: underline; margin-bottom: 2px; padding-right: 60px; }}
             .sub-title {{ text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 6px; }}
-            
             .meta-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
             .meta-table td {{ padding: 2px 4px; font-size: 10px; border: 1px solid #000; }}
             .bg-gray {{ background-color: #d9d9d9; font-weight: bold; }}
             .bg-yellow {{ background-color: #fff2cc; font-weight: bold; }}
-            
             .main-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
             .main-table th, .main-table td {{ border: 1px solid #000; padding: 2px 4px; height: 17px; font-size: 10px; }}
             .main-table th {{ background-color: #f2f2f2; text-align: center; font-weight: bold; }}
-            
             .footer-table {{ width: 100%; border-collapse: collapse; margin-top: 4px; }}
             .footer-table td {{ padding: 2px; font-size: 10px; font-weight: bold; }}
-            
-            /* ฉบับที่มุมซ้ายล่าง */
             .doc-version-bottom {{ font-size: 9px; font-weight: bold; margin-top: 2px; }}
-            
             .print-btn {{ background-color: #007bff; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 5px; margin-bottom: 15px; }}
             .print-btn:hover {{ background-color: #0056b3; }}
-            @media print {{ .print-btn {{ display: none; }} }}
+            @media print {{ .print-btn {{ display: none; }} .page-sheet {{ margin-bottom: 0; }} }}
         </style>
     </head>
     <body>
         <button class="print-btn" onclick="window.print()">🖨️ สั่งพิมพ์เอกสารนี้ (Print / Save as PDF)</button>
-        
-        <div class="page-container">
-            <!-- ฝั่งซ้าย: ครัว Prep -->
-            <div class="form-box">
-                <div class="doc-code-top">PM38-FM-001</div>
-                <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
-                <div class="sub-title">Food Requisition Form</div>
-                <table class="meta-table">
-                    <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
-                    <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
-                    <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
-                </table>
-                <table class="main-table">
-                    <thead>
-                        <tr><th rowspan="2" width="8%">No.</th><th colspan="2" width="28%">REQUESTED</th><th rowspan="2" width="34%">Description</th><th rowspan="2" width="30%">Menu</th></tr>
-                        <tr><th width="14%">Quantity</th><th width="14%">Unit</th></tr>
-                    </thead>
-                    <tbody>{render_rows(prep_items)}</tbody>
-                </table>
-                <table class="meta-table">
-                    <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
-                    <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
-                </table>
-                <table class="footer-table">
-                    <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
-                </table>
-                <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
-            </div>
-
-            <!-- ฝั่งขวา: ครัว บุชเชอร์ -->
-            <div class="form-box">
-                <div class="doc-code-top">PM38-FM-001</div>
-                <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
-                <div class="sub-title">Food Requisition Form</div>
-                <table class="meta-table">
-                    <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
-                    <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
-                    <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
-                </table>
-                <table class="main-table">
-                    <thead>
-                        <tr><th rowspan="2" width="8%">No.</th><th colspan="2" width="28%">REQUESTED</th><th rowspan="2" width="34%">Description</th><th rowspan="2" width="30%">Menu</th></tr>
-                        <tr><th width="14%">Quantity</th><th width="14%">Unit</th></tr>
-                    </thead>
-                    <tbody>{render_rows(butcher_items)}</tbody>
-                </table>
-                <table class="meta-table">
-                    <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
-                    <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
-                </table>
-                <table class="footer-table">
-                    <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
-                </table>
-                <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
-            </div>
-        </div>
+        {pages_html}
     </body>
     </html>
     """
-    return html_content
+    return html_content, total_pages
 
 master_df = load_master_recipes()
 
@@ -305,6 +316,8 @@ def main_kitchen_page():
                 new_drafts = []
                 rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
                 use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
+                today_str = date.today().strftime("%Y-%m-%d")
+                
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
                         for _, row in df_part.iterrows():
@@ -312,7 +325,8 @@ def main_kitchen_page():
                                 'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
                                 'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
                                 'วัตถุดิบ': row.get('Item_Description', '-'), 'ครัวที่รับผิดชอบ': dept_name,
-                                'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์'
+                                'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
+                                'วันที่สั่ง': today_str
                             })
                 if new_drafts:
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
@@ -370,20 +384,82 @@ def main_kitchen_page():
                 st.rerun()
 
         st.markdown("---")
-        st.header("🖨️ แบบฟอร์ม ISO สำหรับตรวจสอบและสั่งพิมพ์")
+        st.header("🖨️ ตัวอย่างแบบฟอร์ม ISO สำหรับสั่งพิมพ์")
         rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
         use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
         
-        # แสดงตารางแบบฟอร์ม ISO สำหรับสั่งพิมพ์
-        html_view = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str)
-        components.html(html_view, height=750, scrolling=True)
+        # แสดงตารางแบบฟอร์ม ISO
+        html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str)
+        components.html(html_view, height=750 * total_p, scrolling=True)
 
+    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ตามรูปแบบใหม่ ---
     st.markdown("---")
-    st.header("📊 ประวัติออเดอร์ที่ส่งไปแล้ว (ทุกงาน)")
+    st.header("📊 ประวัติการสั่งออเดอร์ทั้งหมด")
+    
     all_orders_df = load_orders()
     if not all_orders_df.empty:
-        st.dataframe(all_orders_df.drop(columns=['timestamp'], errors='ignore'), use_container_width=True)
-    else: st.info("ยังไม่มีประวัติการส่งออเดอร์ครับ")
+        # จัดกลุ่มออเดอร์ตาม ชื่องาน (No Function) และ วันที่สั่ง
+        group_cols = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'วันที่ใช้สินค้า', 'วันที่รับสินค้า', 'To']
+        
+        # ตรวจสอบว่ามีคอลัมน์ วันที่สั่ง หรือยัง
+        if 'วันที่สั่ง' not in all_orders_df.columns:
+            all_orders_df['วันที่สั่ง'] = '-'
+            
+        unique_jobs = all_orders_df.drop_duplicates(subset=['No (Function)', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+        
+        # สร้าง Header สำหรับตารางประวัติ
+        p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2, 2, 2, 1, 2, 3, 2])
+        p_c1.markdown("**วันที่สั่ง**")
+        p_c2.markdown("**ชื่องาน (No. Func)**")
+        p_c3.markdown("**ประเภทงาน**")
+        p_c4.markdown("**จำนวนคน**")
+        p_c5.markdown("**วันที่ใช้สินค้า**")
+        p_c6.markdown("**ดาวน์โหลด / พิมพ์เอกสาร ISO**")
+        p_c7.markdown("**สถานะ**")
+        st.markdown("---")
+
+        for idx, job in unique_jobs.iterrows():
+            job_no = job.get('No (Function)', '-')
+            job_event = job.get('ประเภทงาน', '-')
+            job_pax = job.get('จำนวนคน', '-')
+            job_use_date = job.get('วันที่ใช้สินค้า', '-')
+            job_rec_date = job.get('วันที่รับสินค้า', '-')
+            job_to = job.get('To', '-')
+            job_order_date = job.get('วันที่สั่ง', '-')
+            
+            # ดึงรายการวัตถุดิบทั้งหมดของงานนี้
+            job_items = all_orders_df[
+                (all_orders_df['No (Function)'] == job_no) & 
+                (all_orders_df['ประเภทงาน'] == job_event)
+            ]
+            
+            status_list = job_items['สถานะ'].unique() if 'สถานะ' in job_items.columns else ['🔴 รอรับออเดอร์']
+            main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
+
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 2, 2, 1, 2, 3, 2])
+            col1.write(job_order_date)
+            col2.write(f"**{job_no}**")
+            col3.write(job_event)
+            col4.write(str(job_pax))
+            col5.write(job_use_date)
+            
+            # ปุ่มพิมพ์แบบฟอร์ม ISO
+            with col6:
+                if st.button(f"🖨️ พิมพ์/ดูเอกสาร", key=f"btn_print_{idx}"):
+                    st.session_state[f"show_modal_{idx}"] = not st.session_state.get(f"show_modal_{idx}", False)
+
+            col7.write(main_status)
+
+            # หากกดปุ่มพิมพ์ จะแสดง Pop-up ตาราง ISO ของงานนั้นๆ
+            if st.session_state.get(f"show_modal_{idx}", False):
+                with st.expander(f"📄 แบบฟอร์ม ISO งาน: {job_no} ({job_event})", expanded=True):
+                    hist_html, hist_pages = generate_printable_html(
+                        job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
+                    )
+                    components.html(hist_html, height=750 * hist_pages, scrolling=True)
+            st.markdown("<hr style='margin: 5px 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
+    else:
+        st.info("ยังไม่มีประวัติการสั่งออเดอร์ครับ")
 
 # ==========================================
 # 7. หน้า Admin

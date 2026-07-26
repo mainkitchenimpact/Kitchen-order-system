@@ -658,7 +658,7 @@ def receiver_kitchen_page(dept_name):
 
             current_status = job_items['สถานะ'].iloc[0] if not job_items.empty and 'สถานะ' in job_items.columns else '🔴 รอรับออเดอร์'
 
-            # 🟢 1. ย่อไว้เป็นค่าเริ่มต้น (expanded=False)
+            # 🟢 ย่อการ์ดไว้เป็นค่าเริ่มต้น (expanded=False)
             with st.expander(f"📌 งาน: {job_to} | ประเภท: {job_event} | วันที่รับสินค้า: {job_rec_date} | สถานะ: {current_status}", expanded=False):
                 m_col1, m_col2, m_col3, m_col4 = st.columns([2, 2, 2, 3])
                 m_col1.write(f"**จำนวนคน:** {job_pax} Pax")
@@ -681,7 +681,7 @@ def receiver_kitchen_page(dept_name):
                 st.markdown("---")
                 st.markdown("**✏️ รายการวัตถุดิบ (สามารถแก้ไขชื่อสินค้าและจำนวนได้):**")
                 
-                # 🟢 2. ตารางให้ครัว Prep แก้ไขชื่อและปริมาณสินค้า
+                # 🟢 ตารางให้ครัว Prep แก้ไขชื่อและปริมาณสินค้า
                 edit_cols = ['วัตถุดิบ', 'จำนวน', 'หน่วย', 'เมนู', 'doc_id']
                 available_cols = [c for c in edit_cols if c in job_items.columns]
                 
@@ -707,15 +707,12 @@ def receiver_kitchen_page(dept_name):
                         orig_desc = str(orig_row['วัตถุดิบ']).strip()
                         orig_qty = float(orig_row['จำนวน'])
                         
-                        # ตรวจสอบการเปลี่ยนแปลง
                         if (new_desc != orig_desc) or (new_qty != orig_qty):
-                            # อัปเดต Firebase ออเดอร์หลัก
                             db.collection('orders').document(doc_id).update({
                                 'วัตถุดิบ': new_desc,
                                 'จำนวน': new_qty
                             })
                             
-                            # 🟢 3. บันทึกประวัติลง Audit Log
                             log_data = {
                                 'job_to': job_to,
                                 'job_event': job_event,
@@ -731,15 +728,19 @@ def receiver_kitchen_page(dept_name):
                             changes_made += 1
                             
                     if changes_made > 0:
-                        st.success(f"บันทึกการปรับเปลี่ยนวัตถุดิบสำเร็จ {changes_made} รายการ (บันทึกประวัติเรียบร้อยแล้ว)")
+                        st.success(f"บันทึกการปรับเปลี่ยนวัตถุดิบสำเร็จ {changes_made} รายการ")
                         st.rerun()
                     else:
                         st.info("ไม่มีการเปลี่ยนแปลงข้อมูลวัตถุดิบ")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 🟢 4. ช่องหมายเหตุสำหรับการสื่อสาร
-                current_remark = job_items['หมายเหตุ'].iloc[0] if 'หมายเหตุ' in job_items.columns and job_items['หมายเหตุ'].iloc[0] else ""
+                # 🟢 ช่องหมายเหตุสำหรับการสื่อสาร (เช็คความปลอดภัยตารางว่างเรียบร้อย)
+                current_remark = ""
+                if not job_items.empty and 'หมายเหตุ' in job_items.columns:
+                    val = job_items['หมายเหตุ'].iloc[0]
+                    current_remark = str(val) if pd.notna(val) else ""
+
                 new_remark = st.text_area("💬 หมายเหตุ / ข้อความสื่อสารระหว่างครัว:", value=current_remark, placeholder="ระบุข้อความเพิ่มเติมหรือแจ้งปัญหาวัตถุดิบที่นี่...", key=f"remark_{idx}")
                 
                 if st.button("💬 บันทึกหมายเหตุ", key=f"btn_save_remark_{idx}"):

@@ -43,7 +43,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูล (เพิ่ม Caching เพื่อป้องกัน Quota Exceeded)
+# 3. ฟังก์ชันดึงข้อมูล และจัดฟอร์แมตวันที่
 # ==========================================
 def format_date_th(date_val):
     if not date_val or str(date_val) == '-':
@@ -56,7 +56,6 @@ def format_date_th(date_val):
     except ValueError:
         return str(date_val)
 
-@st.cache_data(ttl=60)
 def load_master_recipes():
     try:
         docs = db.collection('master_recipes').stream()
@@ -70,7 +69,6 @@ def load_master_recipes():
         st.error(f"ไม่สามารถดึงข้อมูลสูตรอาหารได้: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=15)
 def load_orders():
     try:
         docs = db.collection('orders').stream()
@@ -84,7 +82,6 @@ def load_orders():
         st.error(f"ไม่สามารถดึงข้อมูลออเดอร์ได้: {e}")
         return pd.DataFrame(columns=columns_format)
 
-@st.cache_data(ttl=30)
 def load_history_logs():
     try:
         docs = db.collection('order_history_logs').stream()
@@ -92,9 +89,6 @@ def load_history_logs():
         return pd.DataFrame(data) if data else pd.DataFrame()
     except Exception as e:
         return pd.DataFrame()
-
-def clear_all_caches():
-    st.cache_data.clear()
 
 def generate_next_item_code(dept_name, current_master_df):
     prefix_map = {"ครัว บุชเชอร์": "BU", "ครัว Prep": "PA", "ครัว Bakery": "BA"}
@@ -153,7 +147,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
         pages_html += f"""
         <div class="page-sheet" style="{page_break_style}">
             <div class="page-container">
-                <!-- ฝั่งซ้าย: ครัว Prep -->
                 <div class="form-box">
                     <div class="doc-code-top">PM38-FM-001</div>
                     <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
@@ -180,7 +173,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                     <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
                 </div>
 
-                <!-- ฝั่งขวา: ครัว บุชเชอร์ -->
                 <div class="form-box">
                     <div class="doc-code-top">PM38-FM-001</div>
                     <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
@@ -461,7 +453,6 @@ def main_kitchen_page():
                     o_data['timestamp'] = firestore.SERVER_TIMESTAMP
                     db.collection('orders').add(o_data)
                 st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
-                clear_all_caches() # เคลียร์แคชเพื่ออัปเดตข้อมูลใหม่
                 st.success("ส่งออเดอร์สำเร็จ!")
                 st.rerun()
 
@@ -609,7 +600,6 @@ def admin_page():
                         db.collection('master_recipes').add(new_data)
                         success_count += 1
                 if success_count > 0:
-                    clear_all_caches()
                     st.success(f"บันทึกเมนู '{food_name}' สำเร็จ {success_count} รายการ!")
                     st.rerun()
 
@@ -631,7 +621,6 @@ def admin_page():
                     for doc_id in match_doc['doc_id']:
                         db.collection('master_recipes').document(doc_id).delete()
                         count += 1
-                clear_all_caches()
                 st.success(f"ลบรายการสำเร็จ {count} รายการ!")
                 st.rerun()
 
@@ -652,7 +641,6 @@ def receiver_kitchen_page(dept_name):
     st.markdown("---")
     
     if st.button("🔄 อัปเดตข้อมูลล่าสุด"): 
-        clear_all_caches()
         st.rerun()
 
     all_orders = load_orders()
@@ -713,7 +701,6 @@ def receiver_kitchen_page(dept_name):
                     if chk_printed != is_job_printed:
                         for doc_id in job_items['doc_id']:
                             db.collection('orders').document(doc_id).update({'is_printed': chk_printed})
-                        clear_all_caches()
                         st.success("บันทึกสถานะการพิมพ์เรียบร้อยแล้ว!")
                         st.rerun()
 
@@ -777,7 +764,6 @@ def receiver_kitchen_page(dept_name):
                             changes_made += 1
                             
                     if changes_made > 0:
-                        clear_all_caches()
                         st.success(f"บันทึกการปรับเปลี่ยนวัตถุดิบสำเร็จ {changes_made} รายการ")
                         st.rerun()
                     else:
@@ -795,7 +781,6 @@ def receiver_kitchen_page(dept_name):
                 if st.button("💬 บันทึกหมายเหตุ", key=f"btn_save_remark_{idx}"):
                     for doc_id in job_items['doc_id']:
                         db.collection('orders').document(doc_id).update({'หมายเหตุ': new_remark.strip()})
-                    clear_all_caches()
                     st.success("บันทึกหมายเหตุสื่อสารเรียบร้อยแล้ว!")
                     st.rerun()
 

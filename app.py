@@ -45,7 +45,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูลและ Export เป็น PDF แบบฟอร์มคู่ (แนวนอน)
+# 3. ฟังก์ชันดึงข้อมูลและ Export เป็น PDF แบบฟอร์มคู่ (แนวนอนเป๊ะตามแบบ)
 # ==========================================
 def load_master_recipes():
     try:
@@ -93,7 +93,7 @@ def generate_next_item_code(dept_name, current_master_df):
     next_num = max_num + 1
     return f"{prefix}-{next_num:03d}"
 
-# ฟังก์ชัน Export PDF แบบแยก 2 ตาราง ซ้าย-ขวา ลงใน Google Sheets Template
+# ฟังก์ชัน Export PDF แยก 2 ตาราง ซ้าย-ขวา พร้อมตั้งค่าหน้ากระดาษให้เหมือนภาพตัวอย่าง 100%
 def export_to_pdf_bytes(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     try:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -108,7 +108,7 @@ def export_to_pdf_bytes(draft_df, event_type, pax, to_dept, no_func, rec_date, u
         sh = client.open_by_key(SPREADSHEET_ID)
         worksheet = sh.get_worksheet(0)
         
-        # 1. เคลียร์เฉพาะช่วงพื้นที่กรอกข้อมูลวัตถุดิบ เพื่อคงรูปแบบและดีไซน์ Template ไว้
+        # 1. เคลียร์เฉพาะช่วงพื้นที่กรอกข้อมูลวัตถุดิบ เพื่อรักษาเส้นตาราง สีพื้นหลัง และดีไซน์เดิมไว้
         worksheet.batch_clear(['A8:E25', 'I8:M25'])
         
         # --- 2. กรอกข้อมูล Header ฝั่งซ้าย (ครัว Prep) ---
@@ -163,12 +163,29 @@ def export_to_pdf_bytes(draft_df, event_type, pax, to_dept, no_func, rec_date, u
             end_r = 7 + len(right_rows)
             worksheet.update(right_rows, f'I8:M{end_r}')
 
-        # --- 5. แปลงไฟล์ส่งออกเป็น PDF แนวนอน (Landscape A4) ---
+        # --- 5. แปลงไฟล์ส่งออกเป็น PDF แนวนอน (Landscape A4 + จัดวางแบบขอบแคบกึ่งกลาง) ---
         request = google.auth.transport.requests.Request()
         creds.refresh(request)
         access_token = creds.token
         
-        pdf_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?exportFormat=pdf&format=pdf&size=A4&portrait=false&fitw=true&gridlines=false"
+        pdf_url = (
+            f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?"
+            f"exportFormat=pdf&format=pdf"
+            f"&size=A4"
+            f"&portrait=false"
+            f"&fitw=true"
+            f"&scale=4"
+            f"&gridlines=false"
+            f"&printtitle=false"
+            f"&sheetnames=false"
+            f"&fzr=false"
+            f"&horizontal_alignment=CENTER"
+            f"&vertical_alignment=CENTER"
+            f"&top_margin=0.25"
+            f"&bottom_margin=0.25"
+            f"&left_margin=0.25"
+            f"&right_margin=0.25"
+        )
         headers = {"Authorization": f"Bearer {access_token}"}
         
         response = requests.get(pdf_url, headers=headers)

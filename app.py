@@ -3,10 +3,7 @@ import pandas as pd
 from datetime import date, datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
-import gspread
-from google.oauth2.service_account import Credentials
-import google.auth.transport.requests
-import requests
+import streamlit.components.v1 as components
 
 # ==========================================
 # 1. การเชื่อมต่อ Firebase ผ่าน Streamlit Secrets
@@ -45,7 +42,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูลและ Export เป็น PDF แบบฟอร์มคู่ (แนวนอนเป๊ะตามแบบ)
+# 3. ฟังก์ชันดึงข้อมูลและจัดการออเดอร์
 # ==========================================
 def load_master_recipes():
     try:
@@ -69,15 +66,9 @@ def load_orders():
         st.error(f"ไม่สามารถดึงข้อมูลออเดอร์ได้: {e}")
         return pd.DataFrame(columns=columns_format)
 
-# ฟังก์ชันสร้างรหัสวัตถุดิบอัตโนมัติ (BU-, PA-, BA-)
 def generate_next_item_code(dept_name, current_master_df):
-    prefix_map = {
-        "ครัว บุชเชอร์": "BU",
-        "ครัว Prep": "PA",
-        "ครัว Bakery": "BA"
-    }
+    prefix_map = {"ครัว บุชเชอร์": "BU", "ครัว Prep": "PA", "ครัว Bakery": "BA"}
     prefix = prefix_map.get(dept_name, "GEN")
-    
     max_num = 0
     if not current_master_df.empty and 'Item_Code' in current_master_df.columns:
         for code in current_master_df['Item_Code'].dropna():
@@ -85,119 +76,119 @@ def generate_next_item_code(dept_name, current_master_df):
             if code_str.startswith(prefix + "-"):
                 try:
                     num_part = int(code_str.split("-")[1])
-                    if num_part > max_num:
-                        max_num = num_part
-                except ValueError:
-                    pass
-                    
-    next_num = max_num + 1
-    return f"{prefix}-{next_num:03d}"
+                    if num_part > max_num: max_num = num_part
+                except ValueError: pass
+    return f"{prefix}-{(max_num + 1):03d}"
 
-# ฟังก์ชัน Export PDF แยก 2 ตาราง ซ้าย-ขวา พร้อมตั้งค่าหน้ากระดาษให้เหมือนภาพตัวอย่าง 100%
-def export_to_pdf_bytes(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
-    try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        key_dict = dict(st.secrets["firebase"])
-        if "private_key" in key_dict:
-            key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
-            
-        creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
-        client = gspread.authorize(creds)
+# ==========================================
+# 4. ฟังก์ชันสร้างแบบฟอร์ม ISO แนวนอน (HTML Printable View)
+# ==========================================
+def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
+    prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
+    butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์'].reset_index(drop=True)
+    
+    def render_rows(df):
+        rows_html = ""
+        max_rows = 18
+        for idx in range(max_rows):
+            if idx < len(df):
+                row = df.iloc[idx]
+                rows_html += f"""
+                <tr>
+                    <td style="text-align:center;">{idx+1}</td>
+                    <td style="text-align:center;">{row.get('จำนวน', 0)}</td>
+                    <td style="text-align:center;">{row.get('หน่วย', '')}</td>
+                    <td>{row.get('วัตถุดิบ', '')}</td>
+                    <td>{row.get('เมนู', '')}</td>
+                </tr>"""
+            else:
+                rows_html += "<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>"
+        return rows_html
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            @page {{ size: A4 landscape; margin: 5mm; }}
+            body {{ font-family: 'Sarabun', 'Arial', sans-serif; font-size: 11px; margin: 0; padding: 10px; background-color: #fff; }}
+            .page-container {{ display: flex; justify-content: space-between; gap: 15px; width: 100%; }}
+            .form-box {{ width: 49%; border: 2px solid #000; padding: 6px; box-sizing: border-box; }}
+            .header-title {{ text-align: center; font-weight: bold; font-size: 13px; text-decoration: underline; margin-bottom: 2px; }}
+            .sub-title {{ text-align: center; font-weight: bold; font-size: 12px; margin-bottom: 8px; }}
+            .meta-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
+            .meta-table td {{ padding: 2px 4px; font-size: 10px; border: 1px solid #000; }}
+            .bg-gray {{ background-color: #d9d9d9; font-weight: bold; }}
+            .bg-yellow {{ background-color: #fff2cc; font-weight: bold; }}
+            .main-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
+            .main-table th, .main-table td {{ border: 1px solid #000; padding: 3px 4px; height: 18px; font-size: 10px; }}
+            .main-table th {{ background-color: #f2f2f2; text-align: center; font-weight: bold; }}
+            .footer-table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+            .footer-table td {{ padding: 2px; font-size: 10px; font-weight: bold; }}
+            .print-btn {{ background-color: #007bff; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 5px; margin-bottom: 15px; }}
+            .print-btn:hover {{ background-color: #0056b3; }}
+            @media print {{ .print-btn {{ display: none; }} }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn" onclick="window.print()">🖨️ สั่งพิมพ์เอกสารนี้ (Print / Save as PDF)</button>
         
-        SPREADSHEET_ID = "1itbFLz2T4Va3ZvpLUn5uvQ-eGsk7UFRWz-qOSde9OeA"
-        sh = client.open_by_key(SPREADSHEET_ID)
-        worksheet = sh.get_worksheet(0)
-        
-        # 1. เคลียร์เฉพาะช่วงพื้นที่กรอกข้อมูลวัตถุดิบ เพื่อรักษาเส้นตาราง สีพื้นหลัง และดีไซน์เดิมไว้
-        worksheet.batch_clear(['A8:E25', 'I8:M25'])
-        
-        # --- 2. กรอกข้อมูล Header ฝั่งซ้าย (ครัว Prep) ---
-        worksheet.update([[event_type]], 'B3')
-        worksheet.update([[pax]], 'G3')
-        worksheet.update([[to_dept]], 'B4')
-        worksheet.update([[no_func]], 'G4')
-        worksheet.update([["ครัว Prep"]], 'B5')
-        worksheet.update([[rec_date]], 'G5')
-        worksheet.update([[rec_date]], 'E26')
-        worksheet.update([[use_date]], 'E27')
+        <div class="page-container">
+            <!-- ฝั่งซ้าย: ครัว Prep -->
+            <div class="form-box">
+                <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
+                <div class="sub-title">Food Requisition Form</div>
+                <table class="meta-table">
+                    <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
+                    <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
+                    <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
+                </table>
+                <table class="main-table">
+                    <thead>
+                        <tr><th rowspan="2" width="8%">No.</th><th colspan="2" width="28%">REQUESTED</th><th rowspan="2" width="34%">Description</th><th rowspan="2" width="30%">Menu</th></tr>
+                        <tr><th width="14%">Quantity</th><th width="14%">Unit</th></tr>
+                    </thead>
+                    <tbody>{render_rows(prep_items)}</tbody>
+                </table>
+                <table class="meta-table">
+                    <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
+                    <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
+                </table>
+                <table class="footer-table">
+                    <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
+                </table>
+            </div>
 
-        # --- 3. กรอกข้อมูล Header ฝั่งขวา (ครัว บุชเชอร์) ---
-        worksheet.update([[event_type]], 'J3')
-        worksheet.update([[pax]], 'O3')
-        worksheet.update([[to_dept]], 'J4')
-        worksheet.update([[no_func]], 'O4')
-        worksheet.update([["ครัว บุชเชอร์"]], 'J5')
-        worksheet.update([[rec_date]], 'O5')
-        worksheet.update([[rec_date]], 'M26')
-        worksheet.update([[use_date]], 'M27')
-
-        # --- 4. แยกและกรอกข้อมูลตารางวัตถุดิบ ---
-        prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
-        butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์'].reset_index(drop=True)
-
-        # เติมฝั่งซ้าย (Prep)
-        left_rows = []
-        for idx, row in prep_items.iterrows():
-            left_rows.append([
-                idx + 1,                     # No.
-                row.get('จำนวน', 0),           # Quantity
-                row.get('หน่วย', ''),          # Unit
-                row.get('วัตถุดิบ', ''),        # Description
-                row.get('เมนู', '')            # Menu
-            ])
-        if left_rows:
-            end_r = 7 + len(left_rows)
-            worksheet.update(left_rows, f'A8:E{end_r}')
-
-        # เติมฝั่งขวา (Butcher)
-        right_rows = []
-        for idx, row in butcher_items.iterrows():
-            right_rows.append([
-                idx + 1,                     # No.
-                row.get('จำนวน', 0),           # Quantity
-                row.get('หน่วย', ''),          # Unit
-                row.get('วัตถุดิบ', ''),        # Description
-                row.get('เมนู', '')            # Menu
-            ])
-        if right_rows:
-            end_r = 7 + len(right_rows)
-            worksheet.update(right_rows, f'I8:M{end_r}')
-
-        # --- 5. แปลงไฟล์ส่งออกเป็น PDF แนวนอน (Landscape A4 + จัดวางแบบขอบแคบกึ่งกลาง) ---
-        request = google.auth.transport.requests.Request()
-        creds.refresh(request)
-        access_token = creds.token
-        
-        pdf_url = (
-            f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?"
-            f"exportFormat=pdf&format=pdf"
-            f"&size=A4"
-            f"&portrait=false"
-            f"&fitw=true"
-            f"&scale=4"
-            f"&gridlines=false"
-            f"&printtitle=false"
-            f"&sheetnames=false"
-            f"&fzr=false"
-            f"&horizontal_alignment=CENTER"
-            f"&vertical_alignment=CENTER"
-            f"&top_margin=0.25"
-            f"&bottom_margin=0.25"
-            f"&left_margin=0.25"
-            f"&right_margin=0.25"
-        )
-        headers = {"Authorization": f"Bearer {access_token}"}
-        
-        response = requests.get(pdf_url, headers=headers)
-        if response.status_code == 200:
-            return response.content
-        else:
-            st.error(f"ไม่สามารถแปลงไฟล์เป็น PDF ได้ (Status: {response.status_code})")
-            return None
-            
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการสร้าง PDF: {e}")
-        return None
+            <!-- ฝั่งขวา: ครัว บุชเชอร์ -->
+            <div class="form-box">
+                <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
+                <div class="sub-title">Food Requisition Form</div>
+                <table class="meta-table">
+                    <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
+                    <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
+                    <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
+                </table>
+                <table class="main-table">
+                    <thead>
+                        <tr><th rowspan="2" width="8%">No.</th><th colspan="2" width="28%">REQUESTED</th><th rowspan="2" width="34%">Description</th><th rowspan="2" width="30%">Menu</th></tr>
+                        <tr><th width="14%">Quantity</th><th width="14%">Unit</th></tr>
+                    </thead>
+                    <tbody>{render_rows(butcher_items)}</tbody>
+                </table>
+                <table class="meta-table">
+                    <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
+                    <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
+                </table>
+                <table class="footer-table">
+                    <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
+                </table>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_content
 
 master_df = load_master_recipes()
 
@@ -205,53 +196,42 @@ st.set_page_config(page_title="ระบบสั่งวัตถุดิบ�
 
 st.markdown("""
 <style>
-div.stButton > button[kind="primary"] {
-    background-color: #28a745 !important;
-    border-color: #28a745 !important;
-    color: white !important;
-}
-div.stButton > button[kind="primary"]:hover {
-    background-color: #218838 !important;
-    border-color: #1e7e34 !important;
-}
+div.stButton > button[kind="primary"] { background-color: #28a745 !important; border-color: #28a745 !important; color: white !important; }
+div.stButton > button[kind="primary"]:hover { background-color: #218838 !important; border-color: #1e7e34 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. หน้าล็อกอิน (Login Page)
+# 5. หน้าล็อกอิน (Login Page)
 # ==========================================
 def login_page():
     st.title("🔐 เข้าสู่ระบบ (Login)")
     st.markdown("กรุณาเลือกแผนกของคุณเพื่อเข้าใช้งานระบบออเดอร์")
     departments = ["Main Kitchen", "Prep", "Butcher", "Bakery", "Admin"]
     selected_dept = st.selectbox("เลือกแผนก (Department):", departments)
-    
     if st.button("เข้าสู่ระบบ"):
         st.session_state.logged_in_dept = selected_dept
         st.rerun()
 
 # ==========================================
-# 5. หน้าของครัวเมน (Main Kitchen)
+# 6. หน้าของครัวเมน (Main Kitchen)
 # ==========================================
 def main_kitchen_page():
     col1, col2 = st.columns([8, 1])
-    with col1:
-        st.title("🍳 ศูนย์บัญชาการ: ครัวเมน (Main Kitchen)")
+    with col1: st.title("🍳 ศูนย์บัญชาการ: ครัวเมน (Main Kitchen)")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
             st.rerun()
             
     st.markdown("---")
-    
     if master_df.empty:
         st.warning("⚠️ ยังไม่มีข้อมูลสูตรอาหาร กรุณาไปเพิ่มข้อมูลที่เมนู Admin ก่อนครับ")
         return
 
-    # --- ส่วนที่ 1: ข้อมูลรายละเอียดงาน ---
+    # --- ส่วนที่ 1: รายละเอียดงาน ---
     h_col1, h_col2 = st.columns([8, 2])
-    with h_col1:
-        st.header("📝 1. ข้อมูลรายละเอียดงาน")
+    with h_col1: st.header("📝 1. ข้อมูลรายละเอียดงาน")
     with h_col2:
         st.write("") 
         if st.button("🆕 ขึ้นใบงานใหม่ (Clear Form)"):
@@ -267,7 +247,7 @@ def main_kitchen_page():
     c1, c2, c3 = st.columns(3)
     with c1:
         event_type = st.text_input("ประเภทงาน:", placeholder="เช่น Buffet, Set Menu...", key="event_type_input")
-        no_function = st.text_input("No (Function):", placeholder="ระบุหมายเลขงาน (เว้นว่างได้)", key="no_function_input")
+        no_function = st.text_input("No (Function):", placeholder="ระบุหมายเลขงาน", key="no_function_input")
     with c2:
         pax = st.number_input("จำนวนคน (Pax):", min_value=1, key="pax_input")
         receive_date = st.date_input("1. วันที่รับสินค้า:", key="receive_date_input")
@@ -277,56 +257,39 @@ def main_kitchen_page():
         
     st.markdown("---")
     
-    # --- ส่วนที่ 2: เลือกและจัดเตรียมเมนูอาหาร (เฉพาะ Prep และ Butcher) ---
+    # --- ส่วนที่ 2: เลือกเมนูอาหาร ---
     st.header("🛒 2. เลือกและจัดเตรียมเมนูอาหาร")
-    
-    if 'Food_Name' in master_df.columns:
-        menu_list = master_df['Food_Name'].dropna().unique()
-        selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", menu_list)
-    else:
-        st.error("ไม่พบคอลัมน์ 'Food_Name' ในตารางอ้างอิง")
-        selected_menu = None
+    menu_list = master_df['Food_Name'].dropna().unique() if 'Food_Name' in master_df.columns else []
+    selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", menu_list) if len(menu_list) > 0 else None
 
-    edited_prep_df = pd.DataFrame()
-    edited_butcher_df = pd.DataFrame()
-    
+    edited_prep_df, edited_butcher_df = pd.DataFrame(), pd.DataFrame()
     if selected_menu:
-        st.markdown(f"**รายการวัตถุดิบสำหรับ: {selected_menu}** *(คลิกที่ช่องตัวเลขเพื่อแก้ไขได้)*")
         recipe_df = master_df[master_df['Food_Name'] == selected_menu].copy()
-        
         if 'Std_Quantity' in recipe_df.columns:
             recipe_df['Std_Quantity'] = pd.to_numeric(recipe_df['Std_Quantity'], errors='coerce').fillna(0)
             recipe_df['จำนวน'] = recipe_df['Std_Quantity'] * pax
-            
-            display_cols = ['Item_Code', 'Item_Description', 'จำนวน', 'Unit']
-            display_cols = [col for col in display_cols if col in recipe_df.columns]
+            display_cols = [c for c in ['Item_Code', 'Item_Description', 'จำนวน', 'Unit'] if c in recipe_df.columns]
             
             col_prep, col_butcher = st.columns(2)
-            
             with col_prep:
                 st.markdown("#### 🥗 ครัว Prep")
-                prep_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว Prep']
-                if not prep_df.empty:
-                    edited_prep_df = st.data_editor(prep_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"prep_{selected_menu}")
-                else:
-                    st.info("ไม่มีรายการ")
-                    
+                p_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว Prep']
+                if not p_df.empty: 
+                    edited_prep_df = st.data_editor(p_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"prep_{selected_menu}")
+                else: st.info("ไม่มีรายการ")
             with col_butcher:
                 st.markdown("#### 🥩 ครัว บุชเชอร์")
-                butcher_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว บุชเชอร์']
-                if not butcher_df.empty:
-                    edited_butcher_df = st.data_editor(butcher_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
-                else:
-                    st.info("ไม่มีรายการ")
-        
+                b_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว บุชเชอร์']
+                if not b_df.empty: 
+                    edited_butcher_df = st.data_editor(b_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
+                else: st.info("ไม่มีรายการ")
+
         if st.button(f"➕ เพิ่ม '{selected_menu}' ลงในรายการสรุป"):
-            if event_type == "":
-                st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนเพิ่มเมนูครับ")
+            if event_type == "": st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
             else:
                 new_drafts = []
                 rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
                 use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
-                
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
                         for _, row in df_part.iterrows():
@@ -336,122 +299,90 @@ def main_kitchen_page():
                                 'วัตถุดิบ': row.get('Item_Description', '-'), 'ครัวที่รับผิดชอบ': dept_name,
                                 'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์'
                             })
-                
                 if new_drafts:
-                    draft_df = pd.DataFrame(new_drafts)
-                    st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, draft_df], ignore_index=True)
-                    st.success(f"เพิ่มเมนู {selected_menu} ลงในรายการสรุปเรียบร้อยแล้ว!")
+                    st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
+                    st.success(f"เพิ่มเมนู {selected_menu} เรียบร้อย!")
 
     st.markdown("---")
     
-    # --- ส่วนที่ 3: สรุปรายการในงานนี้ (รอส่งให้ครัวอื่น) ---
-    st.header("📤 3. สรุปรายการในงานนี้ (รอส่งให้ครัวอื่น)")
-    
+    # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ISO ---
+    st.header("📤 3. สรุปรายการในงานนี้")
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
     else:
-        sum_c1, sum_c2 = st.columns(2)
         draft_df = st.session_state.draft_orders.copy()
         draft_df['__index__'] = draft_df.index 
-        draft_df.insert(0, '❌ ลบ', False) 
+        draft_df.insert(0, '❌ ลบ', False)
         
-        summary_display_cols = ['❌ ลบ', 'เมนู', 'วัตถุดิบ', 'จำนวน', 'หน่วย', '__index__']
-        edited_prep_sum = pd.DataFrame()
-        edited_butcher_sum = pd.DataFrame()
+        sum_c1, sum_c2 = st.columns(2)
+        summary_cols = ['❌ ลบ', 'เมนู', 'วัตถุดิบ', 'จำนวน', 'หน่วย', '__index__']
         
         with sum_c1:
             st.markdown("#### 🥗 สรุป: ครัว Prep")
-            prep_summary = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep']
-            if not prep_summary.empty:
-                edited_prep_sum = st.data_editor(prep_summary[summary_display_cols], use_container_width=True, hide_index=True, disabled=['เมนู', 'วัตถุดิบ'], column_config={"__index__": None}, key="summary_prep_editor")
-                for _, row in edited_prep_sum.iterrows():
-                    st.session_state.draft_orders.at[row['__index__'], 'จำนวน'] = row['จำนวน']
-                    st.session_state.draft_orders.at[row['__index__'], 'หน่วย'] = row['หน่วย']
-            else:
-                st.info("ไม่มีรายการ")
-                
+            p_sum = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep']
+            if not p_sum.empty:
+                e_p = st.data_editor(p_sum[summary_cols], use_container_width=True, hide_index=True, disabled=['เมนู', 'วัตถุดิบ'], column_config={"__index__": None}, key="sum_p")
+                for _, r in e_p.iterrows(): st.session_state.draft_orders.at[r['__index__'], 'จำนวน'] = r['จำนวน']
+            else: st.info("ไม่มีรายการ")
         with sum_c2:
             st.markdown("#### 🥩 สรุป: บุชเชอร์")
-            butcher_summary = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์']
-            if not butcher_summary.empty:
-                edited_butcher_sum = st.data_editor(butcher_summary[summary_display_cols], use_container_width=True, hide_index=True, disabled=['เมนู', 'วัตถุดิบ'], column_config={"__index__": None}, key="summary_butcher_editor")
-                for _, row in edited_butcher_sum.iterrows():
-                    st.session_state.draft_orders.at[row['__index__'], 'จำนวน'] = row['จำนวน']
-                    st.session_state.draft_orders.at[row['__index__'], 'หน่วย'] = row['หน่วย']
-            else:
-                st.info("ไม่มีรายการ")
-        
+            b_sum = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์']
+            if not b_sum.empty:
+                e_b = st.data_editor(b_sum[summary_cols], use_container_width=True, hide_index=True, disabled=['เมนู', 'วัตถุดิบ'], column_config={"__index__": None}, key="sum_b")
+                for _, r in e_b.iterrows(): st.session_state.draft_orders.at[r['__index__'], 'จำนวน'] = r['จำนวน']
+            else: st.info("ไม่มีรายการ")
+
         st.markdown("<br>", unsafe_allow_html=True)
-        c_del, c_export, c_submit = st.columns([2, 4, 4])
+        c_del, c_submit = st.columns([4, 6])
         
         with c_del:
             if st.button("🗑️ ลบรายการที่เลือก"):
-                to_delete_indices = []
-                if not edited_prep_sum.empty: to_delete_indices.extend(edited_prep_sum[edited_prep_sum['❌ ลบ'] == True]['__index__'].tolist())
-                if not edited_butcher_sum.empty: to_delete_indices.extend(edited_butcher_sum[edited_butcher_sum['❌ ลบ'] == True]['__index__'].tolist())
-                    
-                if to_delete_indices:
-                    st.session_state.draft_orders = st.session_state.draft_orders.drop(to_delete_indices).reset_index(drop=True)
+                to_del = []
+                if 'e_p' in locals() and not e_p.empty: to_del.extend(e_p[e_p['❌ ลบ'] == True]['__index__'].tolist())
+                if 'e_b' in locals() and not e_b.empty: to_del.extend(e_b[e_b['❌ ลบ'] == True]['__index__'].tolist())
+                if to_del:
+                    st.session_state.draft_orders = st.session_state.draft_orders.drop(to_del).reset_index(drop=True)
                     st.rerun()
-                else:
-                    st.warning("คุณยังไม่ได้ติ๊กเลือกรายการที่ต้องการลบครับ")
-
-        with c_export:
-            rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
-            use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
-            
-            with st.spinner("กำลังเตรียมไฟล์ PDF แบบแนวนอน..."):
-                pdf_data = export_to_pdf_bytes(
-                    st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str
-                )
-                
-            if pdf_data:
-                file_name = f"Requisition_Form_{event_type}_{no_function}.pdf"
-                st.download_button(
-                    label="📄 ดาวน์โหลดใบเบิก (PDF แนวนอน)",
-                    data=pdf_data,
-                    file_name=file_name,
-                    mime="application/pdf",
-                    use_container_width=True
-                )
 
         with c_submit:
-            if st.button("✅ ยืนยันการส่งออเดอร์ทั้งหมด", type="primary", use_container_width=True):
-                with st.spinner('กำลังส่งออเดอร์ขึ้นระบบ...'):
-                    for _, row in st.session_state.draft_orders.iterrows():
-                        order_data = row.to_dict()
-                        order_data['timestamp'] = firestore.SERVER_TIMESTAMP
-                        db.collection('orders').add(order_data)
-                        
+            if st.button("✅ ยืนยันการส่งออเดอร์เข้าฐานข้อมูล Firebase", type="primary", use_container_width=True):
+                for _, row in st.session_state.draft_orders.iterrows():
+                    o_data = row.to_dict()
+                    o_data['timestamp'] = firestore.SERVER_TIMESTAMP
+                    db.collection('orders').add(o_data)
                 st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
                 st.success("ส่งออเดอร์สำเร็จ!")
-                st.rerun() 
+                st.rerun()
+
+        st.markdown("---")
+        st.header("🖨️ แบบฟอร์ม ISO สำหรับตรวจสอบและสั่งพิมพ์")
+        rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
+        use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
+        
+        # แสดงตารางแบบฟอร์ม ISO สำหรับสั่งพิมพ์
+        html_view = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str)
+        components.html(html_view, height=720, scrolling=True)
 
     st.markdown("---")
     st.header("📊 ประวัติออเดอร์ที่ส่งไปแล้ว (ทุกงาน)")
-    
     all_orders_df = load_orders()
     if not all_orders_df.empty:
-        display_df = all_orders_df.drop(columns=['timestamp'], errors='ignore')
-        st.dataframe(display_df, use_container_width=True)
-    else:
-        st.info("ยังไม่มีประวัติการส่งออเดอร์ครับ")
+        st.dataframe(all_orders_df.drop(columns=['timestamp'], errors='ignore'), use_container_width=True)
+    else: st.info("ยังไม่มีประวัติการส่งออเดอร์ครับ")
 
 # ==========================================
-# 6. หน้าหลังบ้าน Admin (จัดการสูตรอาหาร)
+# 7. หน้า Admin
 # ==========================================
 def admin_page():
     col1, col2 = st.columns([8, 1])
-    with col1:
-        st.title("⚙️ ระบบหลังบ้าน: จัดการสูตรอาหาร (Master Recipes)")
+    with col1: st.title("⚙️ ระบบหลังบ้าน: จัดการสูตรอาหาร (Master Recipes)")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
             st.rerun()
             
     st.markdown("---")
-    
-    st.header("➕ เพิ่มสูตรอาหารใหม่ (รองรับหลายวัตถุดิบพร้อมกัน)")
+    st.header("➕ เพิ่มสูตรอาหารใหม่")
     
     with st.form("batch_add_recipe_form"):
         rc1, rc2 = st.columns(2)
@@ -459,155 +390,84 @@ def admin_page():
             recipe_code = st.text_input("รหัสสูตร (Recipe Code):", placeholder="เช่น EU001")
             food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
         with rc2:
-            kitchen_dept = st.selectbox("ครัวที่รับผิดชอบหลักสำหรับชุดนี้:", ["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"])
-            st.write("")
-            st.info("💡 เคล็ดลับ: ช่องรหัสวัตถุดิบ (Item Code) ด้านล่างจะถูกสร้างให้อัตโนมัติตามครัวที่คุณเลือกครับ")
+            kitchen_dept = st.selectbox("ครัวที่รับผิดชอบหลัก:", ["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"])
 
-        st.markdown("---")
-        st.markdown("📋 **ตารางกรอกส่วนผสม/วัตถุดิบ (สามารถพิมพ์เพิ่มได้หลายบรรทัด)**")
-        
-        initial_data = []
-        for i in range(10):
-            initial_data.append({
-                "ชื่อวัตถุดิบ (Description)": "",
-                "อัตราส่วนต่อ 1 คน": 0.0,
-                "หน่วย": ""
-            })
-        
-        batch_df = pd.DataFrame(initial_data)
-        
-        edited_batch_df = st.data_editor(
-            batch_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-            key="batch_recipe_editor"
-        )
-            
-        submitted = st.form_submit_button("💾 บันทึกสูตรอาหารทั้งหมดลง Firebase", type="primary")
+        batch_df = pd.DataFrame([{"ชื่อวัตถุดิบ (Description)": "", "อัตราส่วนต่อ 1 คน": 0.0, "หน่วย": ""} for _ in range(10)])
+        edited_batch_df = st.data_editor(batch_df, num_rows="dynamic", use_container_width=True, hide_index=True)
+        submitted = st.form_submit_button("💾 บันทึกสูตรอาหารลง Firebase", type="primary")
         
         if submitted:
-            if food_name.strip() == "":
-                st.error("กรุณากรอก 'ชื่อเมนูอาหาร' ก่อนบันทึกครับ")
+            if food_name.strip() == "": st.error("กรุณากรอกชื่อเมนูอาหาร")
             else:
                 success_count = 0
                 temp_master = load_master_recipes()
-                
                 for _, row in edited_batch_df.iterrows():
                     desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
-                    if desc != "" and desc != "nan":
+                    if desc and desc != "nan":
                         auto_code = generate_next_item_code(kitchen_dept, temp_master)
-                        
-                        qty = float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0
-                        unit_val = str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""
-                        
                         new_data = {
-                            'Recipe_Code': recipe_code.strip(),
-                            'Food_Name': food_name.strip(),
-                            'Kitchen_Dept': kitchen_dept,
-                            'Item_Code': auto_code,
+                            'Recipe_Code': recipe_code.strip(), 'Food_Name': food_name.strip(),
+                            'Kitchen_Dept': kitchen_dept, 'Item_Code': auto_code,
                             'Item_Description': desc,
-                            'Std_Quantity': qty,
-                            'Unit': unit_val
+                            'Std_Quantity': float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0,
+                            'Unit': str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""
                         }
                         db.collection('master_recipes').add(new_data)
                         success_count += 1
-                        
-                        new_row_df = pd.DataFrame([new_data])
-                        temp_master = pd.concat([temp_master, new_row_df], ignore_index=True)
-                
                 if success_count > 0:
-                    st.success(f"บันทึกเมนู '{food_name}' สำเร็จ! เพิ่มวัตถุดิบเข้าระบบทั้งหมด {success_count} รายการ")
+                    st.success(f"บันทึกเมนู '{food_name}' สำเร็จ {success_count} รายการ!")
                     st.rerun()
-                else:
-                    st.warning("กรุณากรอกข้อมูลวัตถุดิบอย่างน้อย 1 รายการในตารางครับ")
 
     st.markdown("---")
-    st.header("📋 รายการสูตรอาหารทั้งหมดในฐานข้อมูล (Firebase)")
-    
+    st.header("📋 รายการสูตรอาหารทั้งหมด")
     current_master = load_master_recipes()
     if not current_master.empty:
         display_admin_df = current_master.copy()
         display_admin_df.insert(0, '🗑️ ลบ', False)
-        
-        cols_to_show = ['🗑️ ลบ', 'Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit']
-        cols_to_show = [c for c in cols_to_show if c in display_admin_df.columns]
-        
-        edited_master = st.data_editor(
-            display_admin_df[cols_to_show],
-            use_container_width=True,
-            hide_index=True,
-            disabled=['Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'],
-            key="admin_master_editor"
-        )
+        cols_to_show = [c for c in ['🗑️ ลบ', 'Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'] if c in display_admin_df.columns]
+        edited_master = st.data_editor(display_admin_df[cols_to_show], use_container_width=True, hide_index=True, disabled=['Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'])
         
         if st.button("❌ ลบรายการสูตรอาหารที่เลือก"):
-            to_delete_rows = edited_master[edited_master['🗑️ ลบ'] == True]
-            if not to_delete_rows.empty:
+            to_del_rows = edited_master[edited_master['🗑️ ลบ'] == True]
+            if not to_del_rows.empty:
                 count = 0
-                for idx, row in to_delete_rows.iterrows():
-                    match_doc = current_master[
-                        (current_master['Food_Name'] == row['Food_Name']) & 
-                        (current_master['Item_Description'] == row['Item_Description'])
-                    ]
+                for idx, row in to_del_rows.iterrows():
+                    match_doc = current_master[(current_master['Food_Name'] == row['Food_Name']) & (current_master['Item_Description'] == row['Item_Description'])]
                     for doc_id in match_doc['doc_id']:
                         db.collection('master_recipes').document(doc_id).delete()
                         count += 1
-                
-                st.success(f"ลบรายการออก {count} รายการเรียบร้อยแล้ว!")
+                st.success(f"ลบรายการสำเร็จ {count} รายการ!")
                 st.rerun()
-            else:
-                st.warning("กรุณาติ๊กเลือกช่อง '🗑️ ลบ' หน้าวัตถุดิบที่ต้องการลบก่อนครับ")
-    else:
-        st.info("ยังไม่มีข้อมูลสูตรอาหารในระบบครับ")
 
 # ==========================================
-# 7. หน้าของครัวรับงาน (Prep, Butcher, Bakery)
+# 8. หน้าของครัวรับงาน (Prep, Butcher, Bakery)
 # ==========================================
 def receiver_kitchen_page(dept_name):
     col1, col2 = st.columns([8, 1])
-    with col1:
-        st.title(f"🔪 หน้าจอรับออเดอร์: {dept_name}")
+    with col1: st.title(f"🔪 หน้าจอรับออเดอร์: {dept_name}")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
             st.rerun()
             
     st.markdown("---")
-    
-    if st.button("🔄 ดึงออเดอร์ล่าสุด"):
-        st.rerun()
-        
+    if st.button("🔄 ดึงออเดอร์ล่าสุด"): st.rerun()
     st.header("📥 รายการออเดอร์ที่ต้องเตรียม")
     
-    dept_mapping = {
-        "Prep": "ครัว Prep",
-        "Butcher": "ครัว บุชเชอร์",
-        "Bakery": "ครัว Bakery"
-    }
+    dept_mapping = {"Prep": "ครัว Prep", "Butcher": "ครัว บุชเชอร์", "Bakery": "ครัว Bakery"}
     target_dept = dept_mapping.get(dept_name, dept_name)
-    
     all_orders = load_orders()
+    
     if not all_orders.empty:
         my_orders = all_orders[all_orders['ครัวที่รับผิดชอบ'] == target_dept]
-        
-        if my_orders.empty:
-            st.info("🎉 ยังไม่มีออเดอร์ของแผนกคุณเข้ามาในขณะนี้ครับ")
-        else:
-            display_df = my_orders.drop(columns=['timestamp'], errors='ignore')
-            st.dataframe(display_df, use_container_width=True)
-            st.info("💡 (ในอนาคตเราจะเพิ่มปุ่ม 'กดรับออเดอร์' ตรงนี้ เพื่อให้สถานะเปลี่ยนเป็นสีเขียวครับ)")
-    else:
-        st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
+        if my_orders.empty: st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
+        else: st.dataframe(my_orders.drop(columns=['timestamp'], errors='ignore'), use_container_width=True)
+    else: st.info("🎉 ยังไม่มีออเดอร์เข้ามาในขณะนี้ครับ")
 
 # ==========================================
-# 8. ระบบควบคุมเส้นทางหน้าจอ (Router)
+# 9. ระบบควบคุมเส้นทางหน้าจอ (Router)
 # ==========================================
-if st.session_state.logged_in_dept is None:
-    login_page()
-elif st.session_state.logged_in_dept == "Main Kitchen":
-    main_kitchen_page()
-elif st.session_state.logged_in_dept == "Admin":
-    admin_page()
-else:
-    receiver_kitchen_page(st.session_state.logged_in_dept)
+if st.session_state.logged_in_dept is None: login_page()
+elif st.session_state.logged_in_dept == "Main Kitchen": main_kitchen_page()
+elif st.session_state.logged_in_dept == "Admin": admin_page()
+else: receiver_kitchen_page(st.session_state.logged_in_dept)

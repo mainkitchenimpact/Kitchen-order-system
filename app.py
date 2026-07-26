@@ -533,7 +533,6 @@ def main_kitchen_page():
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
                         for _, row in df_part.iterrows():
-                            # หากไม่ได้ติ๊ก ❌ ลบ ถึงจะนำวัตถุดิบรายการนั้นไปใส่ในออเดอร์
                             if not row.get('❌ ลบ', False):
                                 new_drafts.append({
                                     'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
@@ -754,10 +753,10 @@ def admin_page():
         with rc2:
             food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
 
-        # ย้าย "ครัวที่รับผิดชอบหลัก" เข้ามาเป็นคอลัมน์เลือกในตาราง Batch
+        # 🟢 เพิ่มตารางเป็น 20 บรรทัด และตั้งค่า Dropdown ช่องแรกให้เริ่มต้นเป็นช่องว่าง ""
         batch_df = pd.DataFrame([
-            {"ครัวที่รับผิดชอบ": "ครัว Prep", "ชื่อวัตถุดิบ (Description)": "", "อัตราส่วนต่อ 1 คน": 0.0, "หน่วย": ""} 
-            for _ in range(10)
+            {"ครัวที่รับผิดชอบ": "", "ชื่อวัตถุดิบ (Description)": "", "อัตราส่วนต่อ 1 คน": 0.0, "หน่วย": ""} 
+            for _ in range(20)
         ])
         
         edited_batch_df = st.data_editor(
@@ -768,8 +767,8 @@ def admin_page():
             column_config={
                 "ครัวที่รับผิดชอบ": st.column_config.SelectboxColumn(
                     "ครัวที่รับผิดชอบ",
-                    options=["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"],
-                    required=True
+                    options=["", "ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"],
+                    required=False
                 )
             }
         )
@@ -785,10 +784,12 @@ def admin_page():
                     desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
                     row_dept = str(row["ครัวที่รับผิดชอบ"]).strip()
                     if desc and desc != "nan":
-                        auto_code = generate_next_item_code(row_dept, temp_master)
+                        # ถ้าผู้ใช้เว้นว่างแผนกไว้ ให้ตั้งค่า default เป็น "ครัว Prep"
+                        target_dept_val = row_dept if row_dept != "" else "ครัว Prep"
+                        auto_code = generate_next_item_code(target_dept_val, temp_master)
                         new_data = {
                             'Recipe_Code': recipe_code.strip(), 'Food_Name': food_name.strip(),
-                            'Kitchen_Dept': row_dept, 'Item_Code': auto_code,
+                            'Kitchen_Dept': target_dept_val, 'Item_Code': auto_code,
                             'Item_Description': desc,
                             'Std_Quantity': float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0,
                             'Unit': str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""

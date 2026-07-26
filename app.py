@@ -587,7 +587,7 @@ def admin_page():
                 st.rerun()
 
 # ==========================================
-# 8. หน้าของครัวรับงาน (Prep, Butcher, Bakery) - อัปเดตเต็มรูปแบบ
+# 8. หน้าของครัวรับงาน (Prep, Butcher, Bakery) - เพิ่มปุ่มพิมพ์ ISO
 # ==========================================
 def receiver_kitchen_page(dept_name):
     dept_mapping = {"Prep": "ครัว Prep", "Butcher": "ครัว บุชเชอร์", "Bakery": "ครัว Bakery"}
@@ -610,34 +610,38 @@ def receiver_kitchen_page(dept_name):
         st.info("🎉 ยังไม่มีออเดอร์เข้ามาในระบบครับ")
         return
 
-    # กรองเฉพาะออเดอร์ของครัวนี้
     my_orders = all_orders[all_orders['ครัวที่รับผิดชอบ'] == target_dept].reset_index(drop=True)
     if my_orders.empty:
         st.info(f"🎉 ยังไม่มีออเดอร์ของ {target_dept} ในขณะนี้ครับ")
         return
 
-    # สร้าง แท็บ สลับมุมมอง: 1. จัดการออเดอร์ตามงาน | 2. สรุปวัตถุดิบรวมประจำวัน
     tab1, tab2 = st.tabs(["📦 รายการออเดอร์ตามงาน", "📊 สรุปยอดวัตถุดิบรวมประจำวัน"])
 
     with tab1:
         st.header(f"📥 ออเดอร์วัตถุดิบสำหรับ {target_dept}")
         
-        # จัดกลุ่มตามงาน (To + วันที่สั่ง)
         if 'วันที่สั่ง' not in my_orders.columns:
             my_orders['วันที่สั่ง'] = '-'
             
         unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
-        unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True) # ใหม่อยู่บน
+        unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
 
         for idx, job in unique_jobs.iterrows():
             job_to = job.get('To', '-')
+            job_no = job.get('No (Function)', '-')
             job_event = job.get('ประเภทงาน', '-')
             job_pax = job.get('จำนวนคน', '-')
             job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
             job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
             job_order_date = job.get('วันที่สั่ง', '-')
             
-            # ดึงรายการวัตถุดิบของงานนี้
+            # ดึงรายการวัตถุดิบทั้งหมดของงานนี้จากทุกครัว เพื่อนำไปเจนแบบฟอร์ม ISO 2 ฝั่งเต็มรูปแบบ
+            full_job_items = all_orders[
+                (all_orders['To'] == job_to) & 
+                (all_orders['ประเภทงาน'] == job_event) &
+                (all_orders['วันที่สั่ง'] == job_order_date)
+            ].reset_index(drop=True)
+
             job_items = my_orders[
                 (my_orders['To'] == job_to) & 
                 (my_orders['ประเภทงาน'] == job_event) &
@@ -646,14 +650,12 @@ def receiver_kitchen_page(dept_name):
 
             current_status = job_items['สถานะ'].iloc[0] if not job_items.empty and 'สถานะ' in job_items.columns else '🔴 รอรับออเดอร์'
 
-            # กรอบแต่ละงาน
-            with st.expander(f"📌 งาน: {job_to} | ประเภท: {job_event} | วันที่รับสินค้า: {job_rec_date} | สถานะปัจจุบัน: {current_status}", expanded=True):
+            with st.expander(f"📌 งาน: {job_to} | ประเภท: {job_event} | วันที่รับสินค้า: {job_rec_date} | สถานะ: {current_status}", expanded=True):
                 m_col1, m_col2, m_col3, m_col4 = st.columns([2, 2, 2, 3])
                 m_col1.write(f"**จำนวนคน:** {job_pax} Pax")
                 m_col2.write(f"**วันที่ใช้สินค้า:** {job_use_date}")
                 m_col3.write(f"**สั่งเมื่อ:** {job_order_date}")
 
-                # ส่วนเปลี่ยนสถานะออเดอร์
                 with m_col4:
                     status_options = ['🔴 รอรับออเดอร์', '🟡 กำลังเตรียมวัตถุดิบ', '🟢 พร้อมส่งมอบ (เสร็จสิ้น)']
                     try:
@@ -661,11 +663,10 @@ def receiver_kitchen_page(dept_name):
                     except ValueError:
                         curr_idx = 0
                     
-                    new_status = st.selectbox("เปลี่ยนสถานะ:", status_options, index=curr_idx, key=f"status_select_{idx}")
+                    new_status = st.selectbox("เปลี่ยนสถานะ:", status_options, index=curr_idx, key=f"rec_status_select_{idx}")
                     
                     if new_status != current_status:
-                        if st.button("💾 บันทึกสถานะ", key=f"btn_save_status_{idx}"):
-                            # อัปเดตสถานะลง Firebase
+                        if st.button("💾 บันทึกสถานะ", key=f"rec_btn_save_status_{idx}"):
                             for doc_id in job_items['doc_id']:
                                 db.collection('orders').document(doc_id).update({'สถานะ': new_status})
                             st.success(f"อัปเดตสถานะเป็น '{new_status}' เรียบร้อยแล้ว!")
@@ -675,11 +676,23 @@ def receiver_kitchen_page(dept_name):
                 display_items = job_items[['เมนู', 'วัตถุดิบ', 'จำนวน', 'หน่วย', 'สถานะ']]
                 st.dataframe(display_items, use_container_width=True, hide_index=True)
 
+                # 🟢 ปุ่มเพิ่มใหม่: ปุ่มสำหรับพิมพ์แบบฟอร์ม ISO ในแต่ละงานของครัวรับงาน
+                if st.button(f"🖨️ พิมพ์ใบเบิก (ISO Form)", key=f"rec_btn_print_{idx}"):
+                    st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
+
+                if st.session_state.get(f"rec_show_modal_{idx}", False):
+                    with st.container():
+                        st.markdown("---")
+                        st.subheader(f"📄 แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (งาน: {job_to})")
+                        hist_html, hist_pages = generate_printable_html(
+                            full_job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
+                        )
+                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
+
     with tab2:
         st.header(f"📊 สรุปยอดรวมวัตถุดิบที่ต้องเตรียม ({target_dept})")
         st.info("💡 หน้านี้จะรวมยอดจำนวนวัตถุดิบชนิดเดียวกันของทุกงานเข้าด้วยกัน เพื่อให้เตรียมของทีเดียวได้สะดวกยิ่งขึ้น")
         
-        # ตัวกรองตามวันที่รับสินค้า
         all_rec_dates = my_orders['วันที่รับสินค้า'].unique().tolist()
         selected_filter_date = st.selectbox("เลือกวันที่รับสินค้า (Delivery Date):", ["ทั้งหมด"] + all_rec_dates)
         
@@ -688,7 +701,6 @@ def receiver_kitchen_page(dept_name):
             filtered_orders = filtered_orders[filtered_orders['วันที่รับสินค้า'] == selected_filter_date]
 
         if not filtered_orders.empty:
-            # รวมกลุ่มตาม วัตถุดิบ และ หน่วย
             summary_grouped = filtered_orders.groupby(['วัตถุดิบ', 'หน่วย'])['จำนวน'].sum().reset_index()
             summary_grouped.columns = ['วัตถุดิบ', 'หน่วย', 'ยอดรวมจำนวนที่ต้องเตรียม']
             st.dataframe(summary_grouped, use_container_width=True, hide_index=True)

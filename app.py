@@ -23,7 +23,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ==========================================
-# 2. ตั้งค่าหน้าเว็บ & Custom CSS (แก้บั๊ก .arrow ซ้อน 100%)
+# 2. ตั้งค่าหน้าเว็บ & Custom CSS
 # ==========================================
 st.set_page_config(
     page_title="ระบบสั่งวัตถุดิบห้องครัว",
@@ -36,18 +36,15 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap');
 
-    /* ฟอนต์หลักทั้งระบบ */
     html, body, .stApp, p, label, input, select, textarea, button {
         font-family: 'Kanit', sans-serif !important;
     }
 
-    /* พื้นหลังหลัก */
     .stApp {
         background-color: #0F172A !important;
         color: #F8FAFC !important;
     }
 
-    /* หัวข้อหลัก */
     .main-title {
         color: #FFFFFF !important;
         font-weight: 600 !important;
@@ -61,7 +58,7 @@ st.markdown("""
         margin-bottom: 1.5rem !important;
     }
 
-    /* 🟢 แก้บั๊ก _arrow_right: ซ่อนไอคอนลูกศรเดิมของ Streamlit ที่แสดงผลผิดพลาดออก */
+    /* ซ่อนไอคอนลูกศรเดิมที่บั๊ก */
     div[data-testid="stExpander"] details summary span[data-testid="stExpanderToggleIcon"] {
         display: none !important;
     }
@@ -69,7 +66,6 @@ st.markdown("""
         display: none !important;
     }
 
-    /* ตกแต่งการ์ดงาน (Expander) */
     div[data-testid="stExpander"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
@@ -89,7 +85,6 @@ st.markdown("""
         background-color: #2D3748 !important;
     }
 
-    /* แต่งปุ่มหลัก (Primary Button) */
     div.stButton > button[kind="primary"] {
         background-color: #059669 !important;
         border-color: #059669 !important;
@@ -102,7 +97,6 @@ st.markdown("""
         background-color: #047857 !important;
     }
 
-    /* แต่งปุ่มทั่วไป */
     div.stButton > button {
         background-color: #334155 !important;
         border: 1px solid #475569 !important;
@@ -110,7 +104,6 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    /* Input/Select Box */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
@@ -121,14 +114,12 @@ st.markdown("""
         color: #CBD5E1 !important;
     }
 
-    /* ตาราง Dataframe และ DataEditor มีกรอบชัดเจน */
     div[data-testid="stDataFrame"] {
         background-color: #1E293B !important;
         border: 1px solid #475569 !important;
         border-radius: 8px !important;
     }
 
-    /* Tabs */
     button[data-baseweb="tab"] {
         color: #94A3B8 !important;
     }
@@ -639,9 +630,9 @@ def main_kitchen_page():
         html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
         components.html(html_view, height=750 * total_p, scrolling=True)
 
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ ---
+    # --- ส่วนที่ 4: ติดตามสถานะออเดอร์ ---
     st.markdown("---")
-    st.subheader("📊 ติดตามสถานะออเดอร์ย้อนหลัง")
+    st.subheader("📊 ติดตามสถานะออเดอร์")
     
     m_tab1, m_tab2 = st.tabs(["📦 รายการออเดอร์ทั้งหมด", "📜 ประวัติการปรับเปลี่ยนวัตถุดิบจากครัวเตรียม"])
     all_orders_df = load_orders()
@@ -654,12 +645,23 @@ def main_kitchen_page():
             unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
             unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
             
-            display_jobs = []
+            # แถบหัวข้อตารางเรียงลำดับใหม่ 1-7
+            h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
+            h_c1.markdown("**1. วันที่สั่ง**")
+            h_c2.markdown("**2. ชื่องาน**")
+            h_c3.markdown("**3. ประเภทงาน**")
+            h_c4.markdown("**4. จำนวนคน**")
+            h_c5.markdown("**5. วันที่รับสินค้า**")
+            h_c6.markdown("**6. วันที่ใช้สินค้า**")
+            h_c7.markdown("**7. พิมพ์เอกสาร**")
+            st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #334155;'>", unsafe_allow_html=True)
+
             for idx, job in unique_jobs.iterrows():
                 job_to = job.get('To', '-')
                 job_no = job.get('No (Function)', '-')
                 job_event = job.get('ประเภทงาน', '-')
                 job_pax = job.get('จำนวนคน', '-')
+                job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
                 job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
                 job_order_date = job.get('วันที่สั่ง', '-')
                 
@@ -668,41 +670,30 @@ def main_kitchen_page():
                     (all_orders_df['ประเภทงาน'] == job_event) &
                     (all_orders_df['วันที่สั่ง'] == job_order_date)
                 ]
-                status_list = job_items['สถานะ'].unique() if 'สถานะ' in job_items.columns else ['🔴 รอรับออเดอร์']
-                main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
-                
-                display_jobs.append({
-                    'วันที่สั่ง': job_order_date,
-                    'ชื่องาน (To)': job_to,
-                    'ประเภทงาน': job_event,
-                    'จำนวนคน': job_pax,
-                    'วันที่ใช้สินค้า': job_use_date,
-                    'สถานะ': main_status
-                })
 
-            st.dataframe(pd.DataFrame(display_jobs), use_container_width=True, hide_index=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("**🖨️ เลือกงานเพื่อดูหรือพิมพ์เอกสาร ISO:**")
-            job_options = [f"{j['To']} | {j['ประเภทงาน']} ({j['วันที่สั่ง']})" for idx, j in unique_jobs.iterrows()]
-            selected_job_print = st.selectbox("เลือกรายการงาน:", ["-- เลือกงาน --"] + job_options)
-            
-            if selected_job_print != "-- เลือกงาน --":
-                sel_to = selected_job_print.split(" | ")[0]
-                sel_event = selected_job_print.split(" | ")[1].split(" (")[0]
+                col1, col2, col3, col4, col5, col6, col7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
+                col1.write(job_order_date)
+                col2.write(f"**{job_to}**")
+                col3.write(job_event)
+                col4.write(str(job_pax))
+                col5.write(job_rec_date)
+                col6.write(job_use_date)
                 
-                match_job_items = all_orders_df[
-                    (all_orders_df['To'] == sel_to) & 
-                    (all_orders_df['ประเภทงาน'] == sel_event)
-                ]
-                if not match_job_items.empty:
-                    f_row = match_job_items.iloc[0]
-                    hist_html, hist_pages = generate_printable_html(
-                        match_job_items, f_row.get('ประเภทงาน', ''), f_row.get('จำนวนคน', 0),
-                        f_row.get('To', ''), f_row.get('No (Function)', ''),
-                        f_row.get('วันที่รับสินค้า', ''), f_row.get('วันที่ใช้สินค้า', '')
-                    )
-                    components.html(hist_html, height=750 * hist_pages, scrolling=True)
+                with col7:
+                    if st.button(f"📄 เอกสาร", key=f"btn_print_{idx}", use_container_width=True):
+                        st.session_state[f"show_modal_{idx}"] = not st.session_state.get(f"show_modal_{idx}", False)
+
+                remarks_in_job = [str(r).strip() for r in job_items['หมายเหตุ'].dropna().unique() if str(r).strip() != '']
+                if remarks_in_job:
+                    st.info(f"💬 **หมายเหตุสื่อสาร ({job_to}):** {', '.join(remarks_in_job)}")
+
+                if st.session_state.get(f"show_modal_{idx}", False):
+                    with st.expander(f"📄 แบบฟอร์ม ISO สั่งพิมพ์: {job_to} ({job_event})", expanded=True):
+                        hist_html, hist_pages = generate_printable_html(
+                            job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
+                        )
+                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
+                st.markdown("<hr style='margin: 5px 0; border-top: 1px dashed #334155;'>", unsafe_allow_html=True)
         else:
             st.info("ยังไม่มีประวัติการสั่งออเดอร์ครับ")
 
@@ -713,7 +704,7 @@ def main_kitchen_page():
             rename_map = {
                 'edit_time': 'เวลาที่แก้ไข',
                 'editor_dept': 'ครัวที่แก้ไข',
-                'job_to': 'ชื่องาน (To)',
+                'job_to': 'ชื่องาน',
                 'orig_desc': 'ชื่อเดิม',
                 'new_desc': 'ชื่อใหม่',
                 'orig_qty': 'จำนวนเดิม',
@@ -721,7 +712,7 @@ def main_kitchen_page():
                 'unit': 'หน่วย'
             }
             logs_df = logs_df.rename(columns=rename_map)
-            show_cols = [c for c in ['เวลาที่แก้ไข', 'ครัวที่แก้ไข', 'ชื่องาน (To)', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in logs_df.columns]
+            show_cols = [c for c in ['เวลาที่แก้ไข', 'ครัวที่แก้ไข', 'ชื่องาน', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in logs_df.columns]
             if 'เวลาที่แก้ไข' in logs_df.columns:
                 logs_df = logs_df.sort_values(by='เวลาที่แก้ไข', ascending=False)
             st.dataframe(logs_df[show_cols], use_container_width=True, hide_index=True)
@@ -984,7 +975,7 @@ def receiver_kitchen_page(dept_name):
             if not dept_logs.empty:
                 rename_map = {
                     'edit_time': 'เวลาที่แก้ไข',
-                    'job_to': 'ชื่องาน (To)',
+                    'job_to': 'ชื่องาน',
                     'orig_desc': 'ชื่อเดิม',
                     'new_desc': 'ชื่อใหม่',
                     'orig_qty': 'จำนวนเดิม',
@@ -992,7 +983,7 @@ def receiver_kitchen_page(dept_name):
                     'unit': 'หน่วย'
                 }
                 dept_logs = dept_logs.rename(columns=rename_map)
-                show_cols = [c for c in ['เวลาที่แก้ไข', 'ชื่องาน (To)', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in dept_logs.columns]
+                show_cols = [c for c in ['เวลาที่แก้ไข', 'ชื่องาน', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in dept_logs.columns]
                 
                 if 'เวลาที่แก้ไข' in dept_logs.columns:
                     dept_logs = dept_logs.sort_values(by='เวลาที่แก้ไข', ascending=False)

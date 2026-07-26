@@ -494,20 +494,30 @@ def main_kitchen_page():
         if 'Std_Quantity' in recipe_df.columns:
             recipe_df['Std_Quantity'] = pd.to_numeric(recipe_df['Std_Quantity'], errors='coerce').fillna(0)
             recipe_df['จำนวน'] = recipe_df['Std_Quantity'] * pax
-            display_cols = [c for c in ['Item_Code', 'Item_Description', 'จำนวน', 'Unit'] if c in recipe_df.columns]
             
             col_prep, col_butcher = st.columns(2)
             with col_prep:
                 st.markdown("##### 🥗 ครัว Prep")
-                p_df = recipe_df[recipe_df['Kitchen_Dept'].astype(str).str.strip() == 'ครัว Prep']
+                p_df = recipe_df[recipe_df['Kitchen_Dept'].astype(str).str.strip() == 'ครัว Prep'].copy()
                 if not p_df.empty: 
-                    edited_prep_df = st.data_editor(p_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"prep_{selected_menu}")
+                    p_df.insert(0, '❌ ลบ', False)
+                    display_cols = ['❌ ลบ', 'Item_Description', 'จำนวน', 'Unit']
+                    edited_prep_df = st.data_editor(
+                        p_df[display_cols].rename(columns={'Item_Description': 'รายการวัตถุดิบ'}),
+                        use_container_width=True, hide_index=True, disabled=["รายการวัตถุดิบ"], key=f"prep_{selected_menu}"
+                    )
                 else: st.info("ไม่มีรายการส่งครัว Prep")
+
             with col_butcher:
                 st.markdown("##### 🥩 ครัว บุชเชอร์")
-                b_df = recipe_df[recipe_df['Kitchen_Dept'].astype(str).str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])]
+                b_df = recipe_df[recipe_df['Kitchen_Dept'].astype(str).str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])].copy()
                 if not b_df.empty: 
-                    edited_butcher_df = st.data_editor(b_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
+                    b_df.insert(0, '❌ ลบ', False)
+                    display_cols = ['❌ ลบ', 'Item_Description', 'จำนวน', 'Unit']
+                    edited_butcher_df = st.data_editor(
+                        b_df[display_cols].rename(columns={'Item_Description': 'รายการวัตถุดิบ'}),
+                        use_container_width=True, hide_index=True, disabled=["รายการวัตถุดิบ"], key=f"butcher_{selected_menu}"
+                    )
                 else: st.info("ไม่มีรายการส่งครัว บุชเชอร์")
 
         if st.button(f"➕ เพิ่มเมนู '{selected_menu}' ลงในรายการสรุป", type="primary"):
@@ -523,16 +533,19 @@ def main_kitchen_page():
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
                         for _, row in df_part.iterrows():
-                            new_drafts.append({
-                                'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
-                                'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
-                                'วัตถุดิบ': row.get('Item_Description', '-'), 'ครัวที่รับผิดชอบ': dept_name,
-                                'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
-                                'วันที่สั่ง': now_str, 'หมายเหตุ': '', 'is_printed_prep': False, 'is_printed_butcher': False
-                            })
+                            # หากไม่ได้ติ๊ก ❌ ลบ ถึงจะนำวัตถุดิบรายการนั้นไปใส่ในออเดอร์
+                            if not row.get('❌ ลบ', False):
+                                new_drafts.append({
+                                    'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
+                                    'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
+                                    'วัตถุดิบ': row.get('รายการวัตถุดิบ', '-'), 'ครัวที่รับผิดชอบ': dept_name,
+                                    'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
+                                    'วันที่สั่ง': now_str, 'หมายเหตุ': '', 'is_printed_prep': False, 'is_printed_butcher': False
+                                })
                 if new_drafts:
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
                     st.success(f"เพิ่มเมนู {selected_menu} เรียบร้อย!")
+                    st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("➕ กรอกวัตถุดิบเพิ่มเติมพิเศษ (นอกเหนือจากสูตร Recipe)", expanded=False):
@@ -645,15 +658,14 @@ def main_kitchen_page():
             unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
             unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
             
-            # แถบหัวข้อตารางเรียงลำดับใหม่ 1-7
             h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
-            h_c1.markdown("**วันที่สั่ง**")
-            h_c2.markdown("**ชื่องาน**")
-            h_c3.markdown("**ประเภทงาน**")
-            h_c4.markdown("**จำนวนคน**")
-            h_c5.markdown("**วันที่รับสินค้า**")
-            h_c6.markdown("**วันที่ใช้สินค้า**")
-            h_c7.markdown("**พิมพ์เอกสาร**")
+            h_c1.markdown("**1. วันที่สั่ง**")
+            h_c2.markdown("**2. ชื่องาน**")
+            h_c3.markdown("**3. ประเภทงาน**")
+            h_c4.markdown("**4. จำนวนคน**")
+            h_c5.markdown("**5. วันที่รับสินค้า**")
+            h_c6.markdown("**6. วันที่ใช้สินค้า**")
+            h_c7.markdown("**7. พิมพ์เอกสาร**")
             st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #334155;'>", unsafe_allow_html=True)
 
             for idx, job in unique_jobs.iterrows():
@@ -739,12 +751,29 @@ def admin_page():
         rc1, rc2 = st.columns(2)
         with rc1:
             recipe_code = st.text_input("รหัสสูตร (Recipe Code):", placeholder="เช่น EU001")
-            food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
         with rc2:
-            kitchen_dept = st.selectbox("ครัวที่รับผิดชอบหลัก:", ["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"])
+            food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
 
-        batch_df = pd.DataFrame([{"ชื่อวัตถุดิบ (Description)": "", "อัตราส่วนต่อ 1 คน": 0.0, "หน่วย": ""} for _ in range(10)])
-        edited_batch_df = st.data_editor(batch_df, num_rows="dynamic", use_container_width=True, hide_index=True)
+        # ย้าย "ครัวที่รับผิดชอบหลัก" เข้ามาเป็นคอลัมน์เลือกในตาราง Batch
+        batch_df = pd.DataFrame([
+            {"ครัวที่รับผิดชอบ": "ครัว Prep", "ชื่อวัตถุดิบ (Description)": "", "อัตราส่วนต่อ 1 คน": 0.0, "หน่วย": ""} 
+            for _ in range(10)
+        ])
+        
+        edited_batch_df = st.data_editor(
+            batch_df, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "ครัวที่รับผิดชอบ": st.column_config.SelectboxColumn(
+                    "ครัวที่รับผิดชอบ",
+                    options=["ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"],
+                    required=True
+                )
+            }
+        )
+        
         submitted = st.form_submit_button("💾 บันทึกสูตรอาหารลง Firebase", type="primary")
         
         if submitted:
@@ -754,11 +783,12 @@ def admin_page():
                 temp_master = load_master_recipes()
                 for _, row in edited_batch_df.iterrows():
                     desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
+                    row_dept = str(row["ครัวที่รับผิดชอบ"]).strip()
                     if desc and desc != "nan":
-                        auto_code = generate_next_item_code(kitchen_dept, temp_master)
+                        auto_code = generate_next_item_code(row_dept, temp_master)
                         new_data = {
                             'Recipe_Code': recipe_code.strip(), 'Food_Name': food_name.strip(),
-                            'Kitchen_Dept': kitchen_dept, 'Item_Code': auto_code,
+                            'Kitchen_Dept': row_dept, 'Item_Code': auto_code,
                             'Item_Description': desc,
                             'Std_Quantity': float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0,
                             'Unit': str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""

@@ -81,7 +81,7 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้างแบบฟอร์ม ISO แนวนอน (HTML Printable View)
+# 4. ฟังก์ชันสร้างแบบฟอร์ม ISO แนวนอน (พร้อมรหัส PM38-FM-001 และ ฉบับที่ 1)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
@@ -114,18 +114,29 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
             @page {{ size: A4 landscape; margin: 5mm; }}
             body {{ font-family: 'Sarabun', 'Arial', sans-serif; font-size: 11px; margin: 0; padding: 10px; background-color: #fff; }}
             .page-container {{ display: flex; justify-content: space-between; gap: 15px; width: 100%; }}
-            .form-box {{ width: 49%; border: 2px solid #000; padding: 6px; box-sizing: border-box; }}
-            .header-title {{ text-align: center; font-weight: bold; font-size: 13px; text-decoration: underline; margin-bottom: 2px; }}
-            .sub-title {{ text-align: center; font-weight: bold; font-size: 12px; margin-bottom: 8px; }}
+            .form-box {{ width: 49%; border: 2px solid #000; padding: 6px; box-sizing: border-box; position: relative; }}
+            
+            /* รหัสเอกสารมุมขวาบน */
+            .doc-code-top {{ position: absolute; top: 6px; right: 8px; font-weight: bold; font-size: 10px; }}
+            
+            .header-title {{ text-align: center; font-weight: bold; font-size: 12px; text-decoration: underline; margin-bottom: 2px; padding-right: 60px; }}
+            .sub-title {{ text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 6px; }}
+            
             .meta-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
             .meta-table td {{ padding: 2px 4px; font-size: 10px; border: 1px solid #000; }}
             .bg-gray {{ background-color: #d9d9d9; font-weight: bold; }}
             .bg-yellow {{ background-color: #fff2cc; font-weight: bold; }}
+            
             .main-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
-            .main-table th, .main-table td {{ border: 1px solid #000; padding: 3px 4px; height: 18px; font-size: 10px; }}
+            .main-table th, .main-table td {{ border: 1px solid #000; padding: 2px 4px; height: 17px; font-size: 10px; }}
             .main-table th {{ background-color: #f2f2f2; text-align: center; font-weight: bold; }}
-            .footer-table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+            
+            .footer-table {{ width: 100%; border-collapse: collapse; margin-top: 4px; }}
             .footer-table td {{ padding: 2px; font-size: 10px; font-weight: bold; }}
+            
+            /* ฉบับที่มุมซ้ายล่าง */
+            .doc-version-bottom {{ font-size: 9px; font-weight: bold; margin-top: 2px; }}
+            
             .print-btn {{ background-color: #007bff; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 5px; margin-bottom: 15px; }}
             .print-btn:hover {{ background-color: #0056b3; }}
             @media print {{ .print-btn {{ display: none; }} }}
@@ -137,6 +148,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
         <div class="page-container">
             <!-- ฝั่งซ้าย: ครัว Prep -->
             <div class="form-box">
+                <div class="doc-code-top">PM38-FM-001</div>
                 <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
                 <div class="sub-title">Food Requisition Form</div>
                 <table class="meta-table">
@@ -158,10 +170,12 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                 <table class="footer-table">
                     <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
                 </table>
+                <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
             </div>
 
             <!-- ฝั่งขวา: ครัว บุชเชอร์ -->
             <div class="form-box">
+                <div class="doc-code-top">PM38-FM-001</div>
                 <div class="header-title">IMPACT EXHIBITION MANAGEMENT CO.,LTD.</div>
                 <div class="sub-title">Food Requisition Form</div>
                 <table class="meta-table">
@@ -183,6 +197,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                 <table class="footer-table">
                     <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
                 </table>
+                <div class="doc-version-bottom">ฉบับที่ 1 - 1 ก.ย. 54</div>
             </div>
         </div>
     </body>
@@ -361,7 +376,7 @@ def main_kitchen_page():
         
         # แสดงตารางแบบฟอร์ม ISO สำหรับสั่งพิมพ์
         html_view = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str)
-        components.html(html_view, height=720, scrolling=True)
+        components.html(html_view, height=750, scrolling=True)
 
     st.markdown("---")
     st.header("📊 ประวัติออเดอร์ที่ส่งไปแล้ว (ทุกงาน)")

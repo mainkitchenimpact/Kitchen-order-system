@@ -5,6 +5,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import gspread
 from google.oauth2.service_account import Credentials
+import google.auth.transport.requests
+import requests
 
 # ==========================================
 # 1. การเชื่อมต่อ Firebase ผ่าน Streamlit Secrets
@@ -43,7 +45,7 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงและจัดการข้อมูล
+# 3. ฟังก์ชันดึงข้อมูลและ Export เป็น PDF
 # ==========================================
 def load_master_recipes():
     try:
@@ -91,8 +93,8 @@ def generate_next_item_code(dept_name, current_master_df):
     next_num = max_num + 1
     return f"{prefix}-{next_num:03d}"
 
-# ฟังก์ชัน Export ข้อมูลลง Google Sheets (อัปเดตเข้าไฟล์แม่แบบของคุณโดยตรง)
-def export_to_google_sheet(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
+# ฟังก์ชัน Export ข้อมูลลง Google Sheets Template แล้วแปลงส่งออกเป็นไฟล์ PDF
+def export_to_pdf_bytes(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     try:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         key_dict = dict(st.secrets["firebase"])
@@ -102,46 +104,73 @@ def export_to_google_sheet(draft_df, event_type, pax, to_dept, no_func, rec_date
         creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
         client = gspread.authorize(creds)
         
-        # SPREADSHEET ID ที่ตั้งค่าไว้จากไฟล์ของคุณ
+        # SPREADSHEET ID จากไฟล์ของคุณ
         SPREADSHEET_ID = "1itbFLz2T4Va3ZvpLUn5uvQ-eGsk7UFRWz-qOSde9OeA"
         sh = client.open_by_key(SPREADSHEET_ID)
         worksheet = sh.get_worksheet(0)
         
-        # เคลียร์ข้อมูลเดิมในตารางออกก่อน
+        # 1. เคลียร์ข้อมูลเดิมในตารางออกก่อน
         worksheet.clear()
         
-        header_data = [
-            ["IMPACT EXHIBITION MANAGEMENT CO.,LTD.", "", "", "", ""],
-            ["Food Requisition Form", "", "", "", ""],
-            [f"ประเภทงาน : {event_type}", "", f"จำนวนคน : {pax}", "", ""],
-            [f"To : {to_dept}", "", f"No. (Function) : {no_func}", "", ""],
-            [f"วันที่รับสินค้า : {rec_date}", "", f"วันที่ใช้สินค้า : {use_date}", "", ""],
-            ["", "", "", "", ""],
-            ["No.", "REQUESTED Qty", "Unit", "Description (วัตถุดิบ)", "Menu / ครัวที่รับผิดชอบ"]
-        ]
+        # 2. เขียน Header และรายละเอียดงานตามพิกัด
+        worksheet.update([["IMPACT EXHIBITION MANAGEMENT CO.,LTD."]], 'A1')
+        worksheet.update([["Food Requisition Form"]], 'A2')
         
+        worksheet.update([[f"ประเภทงาน : {event_type}"]], 'A3')
+        worksheet.update([[f"จำนวนคน : {pax}"]], 'D3')
+        worksheet.update([[f"To : {to_dept}"]], 'A4')
+        worksheet.update([[f"No. (Function) : {no_func}"]], 'D4')
+        worksheet.update([[f"วันที่รับสินค้า : {rec_date}"]], 'A5')
+        worksheet.update([[f"วันที่ใช้สินค้า : {use_date}"]], 'D5')
+        
+        # 3. เขียนหัวตารางรายการวัตถุดิบ (แถว A7)
+        table_header = [["No.", "REQUESTED Qty", "Unit", "Description (วัตถุดิบ)", "Menu / ครัวที่รับผิดชอบ"]]
+        worksheet.update(table_header, 'A7')
+        
+        # 4. ใส่รายการวัตถุดิบ (เริ่มแถว A8)
         items_data = []
         for idx, row in draft_df.iterrows():
             items_data.append([
                 idx + 1,
-                row['จำนวน'],
-                row['หน่วย'],
-                row['วัตถุดิบ'],
-                f"{row['เมนู']} ({row['ครัวที่รับผิดชอบ']})"
+                row.get('จำนวน', 0),
+                row.get('หน่วย', ''),
+                row.get('วัตถุดิบ', ''),
+                f"{row.get('เมนู', '')} ({row.get('ครัวที่รับผิดชอบ', '')})"
             ])
             
-        footer_data = [
-            ["", "", "", "", ""],
-            [f"วันที่รับ : {rec_date}", "", f"วันที่ใช้ : {use_date}", "", ""],
-            ["Requested by: ____________________", "", "", "Issued by: ____________________", ""]
-        ]
+        if items_data:
+            end_row = 7 + len(items_data)
+            worksheet.update(items_data, f'A8:E{end_row}')
+        else:
+            end_row = 7
+            
+        # 5. เขียนส่วนท้าย Footer
+        footer_date_row = end_row + 2
+        footer_sign_row = end_row + 3
         
-        full_content = header_data + items_data + footer_data
-        worksheet.update('A1', full_content)
+        worksheet.update([[f"วันที่รับ : {rec_date}"]], f'A{footer_date_row}')
+        worksheet.update([[f"วันที่ใช้ : {use_date}"]], f'C{footer_date_row}')
+        worksheet.update([["Requested by: ____________________"]], f'A{footer_sign_row}')
+        worksheet.update([["Issued by: ____________________"]], f'D{footer_sign_row}')
         
-        return sh.url
+        # 6. ดึง Access Token เพื่อขอ Export ไฟล์ออกมาเป็น PDF
+        request = google.auth.transport.requests.Request()
+        creds.refresh(request)
+        access_token = creds.token
+        
+        # ตั้งค่า PDF ปรับขนาด A4 แนวตั้ง
+        pdf_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?exportFormat=pdf&format=pdf&size=A4&portrait=true&fitw=true"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        response = requests.get(pdf_url, headers=headers)
+        if response.status_code == 200:
+            return response.content
+        else:
+            st.error(f"ไม่สามารถแปลงไฟล์เป็น PDF ได้ (Status: {response.status_code})")
+            return None
+            
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการอัปเดต Google Sheets: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการสร้าง PDF: {e}")
         return None
 
 master_df = load_master_recipes()
@@ -342,16 +371,24 @@ def main_kitchen_page():
                     st.warning("คุณยังไม่ได้ติ๊กเลือกรายการที่ต้องการลบครับ")
 
         with c_export:
-            if st.button("📊 Export เป็น Google Sheets"):
-                with st.spinner("กำลังสร้างไฟล์ Google Sheets..."):
-                    rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
-                    use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
-                    sheet_url = export_to_google_sheet(
-                        st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str
-                    )
-                    if sheet_url:
-                        st.success("สร้าง Google Sheets สำเร็จ!")
-                        st.link_button("📥 คลิกที่นี่เพื่อเปิดดูไฟล์", sheet_url)
+            rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
+            use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
+            
+            # สร้างและเตรียมปุ่มดาวน์โหลดไฟล์ PDF
+            with st.spinner("กำลังเตรียมไฟล์ PDF..."):
+                pdf_data = export_to_pdf_bytes(
+                    st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str
+                )
+                
+            if pdf_data:
+                file_name = f"Requisition_Form_{event_type}_{no_function}.pdf"
+                st.download_button(
+                    label="📄 ดาวน์โหลดใบเบิก (PDF)",
+                    data=pdf_data,
+                    file_name=file_name,
+                    mime="application/pdf",
+                    use_container_width=True
+                )
 
         with c_submit:
             if st.button("✅ ยืนยันการส่งออเดอร์ทั้งหมด", type="primary", use_container_width=True):

@@ -82,7 +82,7 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO (รองรับการขึ้นแผ่นที่ 2 เมื่อเกิน 18 รายการ)
+# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO (ขึ้นแผ่นที่ 2 เมื่อเกิน 18 รายการ)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
@@ -96,7 +96,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
     pages_html = ""
     
     for p in range(total_pages):
-        # ดึงรายการของหน้านี้
         prep_sub = prep_items.iloc[p*ITEMS_PER_PAGE : (p+1)*ITEMS_PER_PAGE]
         butcher_sub = butcher_items.iloc[p*ITEMS_PER_PAGE : (p+1)*ITEMS_PER_PAGE]
 
@@ -392,25 +391,22 @@ def main_kitchen_page():
         html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str)
         components.html(html_view, height=750 * total_p, scrolling=True)
 
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ตามรูปแบบใหม่ ---
+    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ (ดึงชื่องานจาก To) ---
     st.markdown("---")
     st.header("📊 ประวัติการสั่งออเดอร์ทั้งหมด")
     
     all_orders_df = load_orders()
     if not all_orders_df.empty:
-        # จัดกลุ่มออเดอร์ตาม ชื่องาน (No Function) และ วันที่สั่ง
-        group_cols = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'วันที่ใช้สินค้า', 'วันที่รับสินค้า', 'To']
-        
-        # ตรวจสอบว่ามีคอลัมน์ วันที่สั่ง หรือยัง
         if 'วันที่สั่ง' not in all_orders_df.columns:
             all_orders_df['วันที่สั่ง'] = '-'
             
-        unique_jobs = all_orders_df.drop_duplicates(subset=['No (Function)', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+        # จัดกลุ่มโดยใช้ To (ชื่องาน), ประเภทงาน, วันที่สั่ง
+        unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
         
-        # สร้าง Header สำหรับตารางประวัติ
-        p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2, 2, 2, 1, 2, 3, 2])
+        # Header สำหรับตารางประวัติ
+        p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2, 2.5, 2, 1, 2, 3, 2])
         p_c1.markdown("**วันที่สั่ง**")
-        p_c2.markdown("**ชื่องาน (No. Func)**")
+        p_c2.markdown("**ชื่องาน (To)**")
         p_c3.markdown("**ประเภทงาน**")
         p_c4.markdown("**จำนวนคน**")
         p_c5.markdown("**วันที่ใช้สินค้า**")
@@ -419,26 +415,27 @@ def main_kitchen_page():
         st.markdown("---")
 
         for idx, job in unique_jobs.iterrows():
+            job_to = job.get('To', '-')            # ชื่องาน ดึงมาจาก To
             job_no = job.get('No (Function)', '-')
             job_event = job.get('ประเภทงาน', '-')
             job_pax = job.get('จำนวนคน', '-')
             job_use_date = job.get('วันที่ใช้สินค้า', '-')
             job_rec_date = job.get('วันที่รับสินค้า', '-')
-            job_to = job.get('To', '-')
             job_order_date = job.get('วันที่สั่ง', '-')
             
             # ดึงรายการวัตถุดิบทั้งหมดของงานนี้
             job_items = all_orders_df[
-                (all_orders_df['No (Function)'] == job_no) & 
-                (all_orders_df['ประเภทงาน'] == job_event)
+                (all_orders_df['To'] == job_to) & 
+                (all_orders_df['ประเภทงาน'] == job_event) &
+                (all_orders_df['วันที่สั่ง'] == job_order_date)
             ]
             
             status_list = job_items['สถานะ'].unique() if 'สถานะ' in job_items.columns else ['🔴 รอรับออเดอร์']
             main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
 
-            col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 2, 2, 1, 2, 3, 2])
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 2.5, 2, 1, 2, 3, 2])
             col1.write(job_order_date)
-            col2.write(f"**{job_no}**")
+            col2.write(f"**{job_to}**")             # แสดงชื่องานจาก To
             col3.write(job_event)
             col4.write(str(job_pax))
             col5.write(job_use_date)
@@ -450,9 +447,9 @@ def main_kitchen_page():
 
             col7.write(main_status)
 
-            # หากกดปุ่มพิมพ์ จะแสดง Pop-up ตาราง ISO ของงานนั้นๆ
+            # แสดง Pop-up ตาราง ISO
             if st.session_state.get(f"show_modal_{idx}", False):
-                with st.expander(f"📄 แบบฟอร์ม ISO งาน: {job_no} ({job_event})", expanded=True):
+                with st.expander(f"📄 แบบฟอร์ม ISO งาน: {job_to} ({job_event})", expanded=True):
                     hist_html, hist_pages = generate_printable_html(
                         job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
                     )

@@ -677,7 +677,7 @@ def receiver_kitchen_page(dept_name):
                 st.dataframe(display_items, use_container_width=True, hide_index=True)
 
                 # 🟢 ปุ่มเพิ่มใหม่: ปุ่มสำหรับพิมพ์แบบฟอร์ม ISO ในแต่ละงานของครัวรับงาน
-                if st.button(f"🖨️ พิมพ์ใบเบิก (ISO Form)", key=f"rec_btn_print_{idx}"):
+                if st.button(f"🖨️ พิมพ์ใบเบิก", key=f"rec_btn_print_{idx}"):
                     st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
 
                 if st.session_state.get(f"rec_show_modal_{idx}", False):

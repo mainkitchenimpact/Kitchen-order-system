@@ -23,7 +23,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ==========================================
-# 2. ตั้งค่าหน้าเว็บ & Custom CSS บังคับสี (Fixed Theme - กันสีจม 100%)
+# 2. ตั้งค่าหน้าเว็บ & Custom CSS (คลีนบั๊กไอคอนซ้อน + ตีกรอบสวยงาม)
 # ==========================================
 st.set_page_config(
     page_title="ระบบสั่งวัตถุดิบห้องครัว",
@@ -32,7 +32,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS: บังคับคู่สีคงที่ (Fixed Pair Colors) ไม่ให้อ๊องตาม Dark/Light Mode ของเบราว์เซอร์
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap');
@@ -42,7 +41,7 @@ st.markdown("""
         font-family: 'Kanit', sans-serif !important;
     }
 
-    /* พื้นหลังหลักของแอป */
+    /* พื้นหลังหลัก */
     .stApp {
         background-color: #0F172A !important;
         color: #F8FAFC !important;
@@ -62,94 +61,67 @@ st.markdown("""
         margin-bottom: 1.5rem !important;
     }
 
-    /* ปรับแต่ง Expander (การ์ดงาน) ให้เป็นกรอบเข้ม ตัวหนังสือสว่าง คมชัดทุกโหมด */
+    /* ตกแต่ง Expander (การ์ดงาน) - แก้ไขบั๊กข้อความซ้อนไอคอนลูกศร */
     div[data-testid="stExpander"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         margin-bottom: 10px !important;
     }
     
-    div[data-testid="stExpander"] > summary {
+    div[data-testid="stExpander"] details summary {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
         font-weight: 500 !important;
-        border-radius: 10px !important;
-        padding: 12px 16px !important;
+        padding: 10px 14px !important;
     }
 
-    div[data-testid="stExpander"] > summary:hover {
-        background-color: #334155 !important;
-        color: #FFFFFF !important;
+    div[data-testid="stExpander"] details summary:hover {
+        background-color: #2D3748 !important;
     }
 
-    /* บังคับสีข้อความภายใน Expander */
-    div[data-testid="stExpander"] div[role="region"] {
-        background-color: #1E293B !important;
-        color: #E2E8F0 !important;
-        padding: 16px !important;
-    }
-
-    /* แต่งปุ่มหลัก (Primary Button - สีเขียวมรกต) */
+    /* แต่งปุ่มหลัก (Primary Button) */
     div.stButton > button[kind="primary"] {
         background-color: #059669 !important;
         border-color: #059669 !important;
         color: #FFFFFF !important;
         font-weight: 500 !important;
         border-radius: 8px !important;
-        padding: 0.5rem 1.25rem !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
     }
     
     div.stButton > button[kind="primary"]:hover {
         background-color: #047857 !important;
-        border-color: #047857 !important;
     }
 
-    /* แต่งปุ่มทั่วไป (Secondary Button - กรอบใส ตัวหนังสือสว่าง) */
+    /* แต่งปุ่มทั่วไป */
     div.stButton > button {
         background-color: #334155 !important;
         border: 1px solid #475569 !important;
         color: #F8FAFC !important;
-        font-weight: 400 !important;
         border-radius: 8px !important;
     }
 
-    div.stButton > button:hover {
-        background-color: #475569 !important;
-        color: #FFFFFF !important;
-    }
-
-    /* Input/Select Box บังคับสีตัวอักษรและพื้นหลัง */
+    /* Input/Select Box */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
         border-color: #475569 !important;
-        border-radius: 6px !important;
     }
 
     label {
         color: #CBD5E1 !important;
-        font-weight: 500 !important;
     }
 
-    /* ตาราง Data Editor */
+    /* ตาราง Dataframe และ DataEditor มีกรอบชัดเจน */
     div[data-testid="stDataFrame"] {
         background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
+        border: 1px solid #475569 !important;
         border-radius: 8px !important;
     }
 
-    /* ตกแต่ง Sidebar */
-    section[data-testid="stSidebar"] {
-        background-color: #0F172A !important;
-        border-right: 1px solid #1E293B !important;
-    }
-
-    /* ตกแต่ง Tabs */
+    /* Tabs */
     button[data-baseweb="tab"] {
         color: #94A3B8 !important;
-        font-weight: 500 !important;
     }
 
     button[data-baseweb="tab"][aria-selected="true"] {
@@ -398,12 +370,11 @@ def login_page():
     
     col_login, _ = st.columns([1, 1])
     with col_login:
-        with st.container():
-            departments = ["Main Kitchen", "Prep", "Butcher", "Bakery", "Admin"]
-            selected_dept = st.selectbox("เลือกแผนกปฏิบัติตามสายงาน (Department):", departments)
-            if st.button("เข้าสู่ระบบการทำงาน", type="primary", use_container_width=True):
-                st.session_state.logged_in_dept = selected_dept
-                st.rerun()
+        departments = ["Main Kitchen", "Prep", "Butcher", "Bakery", "Admin"]
+        selected_dept = st.selectbox("เลือกแผนกปฏิบัติตามสายงาน (Department):", departments)
+        if st.button("เข้าสู่ระบบการทำงาน", type="primary", use_container_width=True):
+            st.session_state.logged_in_dept = selected_dept
+            st.rerun()
 
 # ==========================================
 # 7. หน้าของครัวเมน (Main Kitchen)
@@ -411,7 +382,8 @@ def login_page():
 def main_kitchen_page():
     col1, col2 = st.columns([8, 2])
     with col1: 
-        st.markdown('<div class="main-title">🍳 ศูนย์สั่งการ: ครัวเมน (Main Kitchen)</div>', unsafe_allow_html=True)
+        # ปรับแก้ข้อความตามความต้องการ
+        st.markdown('<div class="main-title">🍳 ครัวเมน (Main Kitchen)</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-title-text">ออกใบสั่งวัตถุดิบ คำนวณปริมาณตาม Pax และส่งงานไปยังครัวรับผิดชอบ</div>', unsafe_allow_html=True)
     with col2:
         if st.button("🚪 ออกจากระบบ", use_container_width=True):
@@ -612,23 +584,14 @@ def main_kitchen_page():
             unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
             unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
             
-            p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
-            p_c1.markdown("**วันที่สั่ง**")
-            p_c2.markdown("**ชื่องาน (To)**")
-            p_c3.markdown("**ประเภทงาน**")
-            p_c4.markdown("**จำนวนคน**")
-            p_c5.markdown("**วันที่ใช้สินค้า**")
-            p_c6.markdown("**พิมพ์เอกสาร**")
-            p_c7.markdown("**สถานะ**")
-            st.markdown("---")
-
+            # ปรับปรุงรูปที่ 1: ตารางประวัติการสั่งให้มีกรอบสวยงาม ระยะห่างสมดุล
+            display_jobs = []
             for idx, job in unique_jobs.iterrows():
                 job_to = job.get('To', '-')
                 job_no = job.get('No (Function)', '-')
                 job_event = job.get('ประเภทงาน', '-')
                 job_pax = job.get('จำนวนคน', '-')
                 job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
-                job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
                 job_order_date = job.get('วันที่สั่ง', '-')
                 
                 job_items = all_orders_df[
@@ -636,34 +599,42 @@ def main_kitchen_page():
                     (all_orders_df['ประเภทงาน'] == job_event) &
                     (all_orders_df['วันที่สั่ง'] == job_order_date)
                 ]
-                
                 status_list = job_items['สถานะ'].unique() if 'สถานะ' in job_items.columns else ['🔴 รอรับออเดอร์']
                 main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
-
-                col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
-                col1.write(job_order_date)
-                col2.write(f"**{job_to}**")
-                col3.write(job_event)
-                col4.write(str(job_pax))
-                col5.write(job_use_date)
                 
-                with col6:
-                    if st.button(f"🖨️ ดูเอกสาร", key=f"btn_print_{idx}"):
-                        st.session_state[f"show_modal_{idx}"] = not st.session_state.get(f"show_modal_{idx}", False)
+                display_jobs.append({
+                    'วันที่สั่ง': job_order_date,
+                    'ชื่องาน (To)': job_to,
+                    'ประเภทงาน': job_event,
+                    'จำนวนคน': job_pax,
+                    'วันที่ใช้สินค้า': job_use_date,
+                    'สถานะ': main_status
+                })
 
-                col7.write(main_status)
-
-                remarks_in_job = [str(r).strip() for r in job_items['หมายเหตุ'].dropna().unique() if str(r).strip() != '']
-                if remarks_in_job:
-                    st.info(f"💬 **หมายเหตุสื่อสาร ({job_to}):** {', '.join(remarks_in_job)}")
-
-                if st.session_state.get(f"show_modal_{idx}", False):
-                    with st.expander(f"📄 แบบฟอร์มงาน: {job_to} ({job_event})", expanded=True):
-                        hist_html, hist_pages = generate_printable_html(
-                            job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
-                        )
-                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
-                st.markdown("<hr style='margin: 5px 0; border-top: 1px dashed #334155;'>", unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(display_jobs), use_container_width=True, hide_index=True)
+            
+            # ส่วนการกดเลือกพิมพ์เอกสารตามงาน
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("**🖨️ เลือกงานเพื่อดูหรือพิมพ์เอกสาร ISO:**")
+            job_options = [f"{j['To']} | {j['ประเภทงาน']} ({j['วันที่สั่ง']})" for idx, j in unique_jobs.iterrows()]
+            selected_job_print = st.selectbox("เลือกรายการงาน:", ["-- เลือกงาน --"] + job_options)
+            
+            if selected_job_print != "-- เลือกงาน --":
+                sel_to = selected_job_print.split(" | ")[0]
+                sel_event = selected_job_print.split(" | ")[1].split(" (")[0]
+                
+                match_job_items = all_orders_df[
+                    (all_orders_df['To'] == sel_to) & 
+                    (all_orders_df['ประเภทงาน'] == sel_event)
+                ]
+                if not match_job_items.empty:
+                    f_row = match_job_items.iloc[0]
+                    hist_html, hist_pages = generate_printable_html(
+                        match_job_items, f_row.get('ประเภทงาน', ''), f_row.get('จำนวนคน', 0),
+                        f_row.get('To', ''), f_row.get('No (Function)', ''),
+                        f_row.get('วันที่รับสินค้า', ''), f_row.get('วันที่ใช้สินค้า', '')
+                    )
+                    components.html(hist_html, height=750 * hist_pages, scrolling=True)
         else:
             st.info("ยังไม่มีประวัติการสั่งออเดอร์ครับ")
 

@@ -23,61 +23,74 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ==========================================
-# 2. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์มืออาชีพ
+# 2. ตั้งค่าหน้าเว็บ & Custom CSS บังคับสี (Fixed Theme - กันสีจม 100%)
 # ==========================================
 st.set_page_config(
-    page_title="ระบบสื่อสารออเดอร์วัตถุดิบห้องครัว",
+    page_title="ระบบสั่งวัตถุดิบห้องครัว",
     page_icon="🍳",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ชุดแต่งหน้าตา CSS สำหรับองค์กร (Enterprise Dashboard Styling)
+# Custom CSS: บังคับคู่สีคงที่ (Fixed Pair Colors) ไม่ให้อ๊องตาม Dark/Light Mode ของเบราว์เซอร์
 st.markdown("""
 <style>
-    /* นำเข้าฟอนต์ Kanit เพื่อความทันสมัย */
     @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Kanit', sans-serif;
+    /* ฟอนต์หลักทั้งระบบ */
+    html, body, [class*="css"], .stMarkdown, p, div, span, label, input, select, textarea, button {
+        font-family: 'Kanit', sans-serif !important;
     }
 
-    /* ปรับแต่งพื้นหลังหลัก */
-    .main {
-        background-color: #F8FAFC;
+    /* พื้นหลังหลักของแอป */
+    .stApp {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
     }
 
-    /* ตกแต่ง Header หลัก */
+    /* หัวข้อหลัก */
     .main-title {
-        color: #0F172A;
-        font-weight: 600;
-        font-size: 2rem;
-        margin-bottom: 0.2rem;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        font-size: 2.1rem !important;
+        margin-bottom: 0.2rem !important;
     }
     
     .sub-title-text {
-        color: #64748B;
-        font-size: 1rem;
-        margin-bottom: 1.5rem;
+        color: #94A3B8 !important;
+        font-size: 1rem !important;
+        margin-bottom: 1.5rem !important;
     }
 
-    /* ปรับแต่งการ์ดและคอนเทนเนอร์ */
+    /* ปรับแต่ง Expander (การ์ดงาน) ให้เป็นกรอบเข้ม ตัวหนังสือสว่าง คมชัดทุกโหมด */
     div[data-testid="stExpander"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
-        margin-bottom: 12px !important;
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+        border-radius: 10px !important;
+        margin-bottom: 10px !important;
     }
     
     div[data-testid="stExpander"] > summary {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
         font-weight: 500 !important;
-        color: #1E293B !important;
-        border-radius: 12px !important;
+        border-radius: 10px !important;
         padding: 12px 16px !important;
     }
 
-    /* แต่งปุ่มกดหลัก (Primary Button) */
+    div[data-testid="stExpander"] > summary:hover {
+        background-color: #334155 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* บังคับสีข้อความภายใน Expander */
+    div[data-testid="stExpander"] div[role="region"] {
+        background-color: #1E293B !important;
+        color: #E2E8F0 !important;
+        padding: 16px !important;
+    }
+
+    /* แต่งปุ่มหลัก (Primary Button - สีเขียวมรกต) */
     div.stButton > button[kind="primary"] {
         background-color: #059669 !important;
         border-color: #059669 !important;
@@ -85,54 +98,63 @@ st.markdown("""
         font-weight: 500 !important;
         border-radius: 8px !important;
         padding: 0.5rem 1.25rem !important;
-        transition: all 0.2s ease-in-out;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
     }
     
     div.stButton > button[kind="primary"]:hover {
         background-color: #047857 !important;
         border-color: #047857 !important;
-        box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);
     }
 
-    /* แต่งปุ่มกดทั่วไป (Secondary Button) */
+    /* แต่งปุ่มทั่วไป (Secondary Button - กรอบใส ตัวหนังสือสว่าง) */
     div.stButton > button {
-        border-radius: 8px !important;
-        border: 1px solid #CBD5E1 !important;
-        color: #334155 !important;
+        background-color: #334155 !important;
+        border: 1px solid #475569 !important;
+        color: #F8FAFC !important;
         font-weight: 400 !important;
+        border-radius: 8px !important;
     }
 
-    /* ตาราง Data Editor & Dataframe */
+    div.stButton > button:hover {
+        background-color: #475569 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Input/Select Box บังคับสีตัวอักษรและพื้นหลัง */
+    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border-color: #475569 !important;
+        border-radius: 6px !important;
+    }
+
+    label {
+        color: #CBD5E1 !important;
+        font-weight: 500 !important;
+    }
+
+    /* ตาราง Data Editor */
     div[data-testid="stDataFrame"] {
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 8px !important;
-        overflow: hidden;
-    }
-
-    /* ตกแต่งแถบแจ้งเตือน Info/Warning */
-    div[data-testid="stNotification"] {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
         border-radius: 8px !important;
     }
 
-    /* แต่งการ์ดสรุปตัวเลข/สถิติ */
-    .metric-card {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    /* ตกแต่ง Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #0F172A !important;
+        border-right: 1px solid #1E293B !important;
     }
-    
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: 600;
-        color: #0284C7;
+
+    /* ตกแต่ง Tabs */
+    button[data-baseweb="tab"] {
+        color: #94A3B8 !important;
+        font-weight: 500 !important;
     }
-    
-    .metric-label {
-        font-size: 0.875rem;
-        color: #64748B;
+
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #38BDF8 !important;
+        border-bottom-color: #38BDF8 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -337,7 +359,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
         <meta charset="utf-8">
         <style>
             @page {{ size: A4 landscape; margin: 5mm; }}
-            body {{ font-family: 'Sarabun', 'Arial', sans-serif; font-size: 11px; margin: 0; padding: 10px; background-color: #fff; }}
+            body {{ font-family: 'Sarabun', 'Arial', sans-serif; font-size: 11px; margin: 0; padding: 10px; background-color: #fff; color: #000; }}
             .page-sheet {{ margin-bottom: 20px; }}
             .page-container {{ display: flex; justify-content: space-between; gap: 15px; width: 100%; }}
             .form-box {{ width: 49%; border: 2px solid #000; padding: 6px; box-sizing: border-box; position: relative; }}
@@ -345,14 +367,14 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
             .header-title {{ text-align: center; font-weight: bold; font-size: 12px; text-decoration: underline; margin-bottom: 2px; padding-right: 60px; }}
             .sub-title {{ text-align: center; font-weight: bold; font-size: 11px; margin-bottom: 6px; }}
             .meta-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
-            .meta-table td {{ padding: 2px 4px; font-size: 10px; border: 1px solid #000; }}
+            .meta-table td {{ padding: 2px 4px; font-size: 10px; border: 1px solid #000; color: #000; }}
             .bg-gray {{ background-color: #d9d9d9; font-weight: bold; }}
             .bg-yellow {{ background-color: #fff2cc; font-weight: bold; }}
             .main-table {{ width: 100%; border-collapse: collapse; margin-bottom: 5px; }}
-            .main-table th, .main-table td {{ border: 1px solid #000; padding: 2px 4px; height: 17px; font-size: 10px; }}
+            .main-table th, .main-table td {{ border: 1px solid #000; padding: 2px 4px; height: 17px; font-size: 10px; color: #000; }}
             .main-table th {{ background-color: #f2f2f2; text-align: center; font-weight: bold; }}
             .footer-table {{ width: 100%; border-collapse: collapse; margin-top: 4px; }}
-            .footer-table td {{ padding: 2px; font-size: 10px; font-weight: bold; }}
+            .footer-table td {{ padding: 2px; font-size: 10px; font-weight: bold; color: #000; }}
             .doc-version-bottom {{ font-size: 9px; font-weight: bold; margin-top: 2px; }}
             .print-btn {{ background-color: #059669; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 6px; margin-bottom: 15px; }}
             .print-btn:hover {{ background-color: #047857; }}
@@ -371,7 +393,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
 # 6. หน้าล็อกอิน (Login Page)
 # ==========================================
 def login_page():
-    st.markdown('<div class="main-title">🔐 เข้าสู่ระบบ (Kitchen Communication System)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🔐 เข้าสู่ระบบ (Kitchen Order System)</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title-text">ระบบสื่อสารการสั่งซื้อและจัดเตรียมวัตถุดิบระหว่างห้องครัว</div>', unsafe_allow_html=True)
     
     col_login, _ = st.columns([1, 1])
@@ -641,7 +663,7 @@ def main_kitchen_page():
                             job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
                         )
                         components.html(hist_html, height=750 * hist_pages, scrolling=True)
-                st.markdown("<hr style='margin: 5px 0; border-top: 1px dashed #E2E8F0;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 5px 0; border-top: 1px dashed #334155;'>", unsafe_allow_html=True)
         else:
             st.info("ยังไม่มีประวัติการสั่งออเดอร์ครับ")
 

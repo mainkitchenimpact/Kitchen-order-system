@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit.components.v1 as components
@@ -99,7 +99,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
     butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์'].reset_index(drop=True)
     
-    # แปลงวันที่ให้อยู่ในฟอร์แมต DD/MM/YYYY
     formatted_rec_date = format_date_th(rec_date)
     formatted_use_date = format_date_th(use_date)
     
@@ -331,8 +330,9 @@ def main_kitchen_page():
                 rec_str = format_date_th(receive_date)
                 use_str = format_date_th(use_date)
                 
-                # วันและเวลาปัจจุบันสำหรับช่อง "วันที่สั่ง" (DD/MM/YYYY HH:MM)
-                now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                # คำนวณเวลาประเทศไทย (UTC+7) สำหรับช่อง "วันที่สั่ง"
+                now_th = datetime.utcnow() + timedelta(hours=7)
+                now_str = now_th.strftime("%d/%m/%Y %H:%M")
                 
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
@@ -449,11 +449,11 @@ def main_kitchen_page():
             main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
 
             col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
-            col1.write(job_order_date)              # แสดงวันและเวลาที่สั่ง (DD/MM/YYYY HH:MM)
+            col1.write(job_order_date)              # เวลาไทย UTC+7
             col2.write(f"**{job_to}**")
             col3.write(job_event)
             col4.write(str(job_pax))
-            col5.write(job_use_date)                # แสดงวันที่ใช้สินค้า (DD/MM/YYYY)
+            col5.write(job_use_date)                # DD/MM/YYYY
             
             # ปุ่มพิมพ์แบบฟอร์ม ISO
             with col6:

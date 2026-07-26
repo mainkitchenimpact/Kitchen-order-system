@@ -43,8 +43,19 @@ if 'receive_date_input' not in st.session_state: st.session_state.receive_date_i
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
 
 # ==========================================
-# 3. ฟังก์ชันดึงข้อมูล
+# 3. ฟังก์ชันดึงข้อมูล และจัดฟอร์แมตวันที่ (วัน/เดือน/ปี)
 # ==========================================
+def format_date_th(date_val):
+    if not date_val or str(date_val) == '-':
+        return '-'
+    if isinstance(date_val, (date, datetime)):
+        return date_val.strftime("%d/%m/%Y")
+    try:
+        dt = datetime.strptime(str(date_val), "%Y-%m-%d")
+        return dt.strftime("%d/%m/%Y")
+    except ValueError:
+        return str(date_val)
+
 def load_master_recipes():
     try:
         docs = db.collection('master_recipes').stream()
@@ -82,11 +93,15 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO (ขึ้นแผ่นที่ 2 เมื่อเกิน 18 รายการ)
+# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO (แสดงวันที่แบบ วัน/เดือน/ปี)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
     butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์'].reset_index(drop=True)
+    
+    # แปลงวันที่ให้อยู่ในฟอร์แมต DD/MM/YYYY
+    formatted_rec_date = format_date_th(rec_date)
+    formatted_use_date = format_date_th(use_date)
     
     ITEMS_PER_PAGE = 18
     prep_pages = max(1, math.ceil(len(prep_items) / ITEMS_PER_PAGE))
@@ -129,7 +144,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                     <table class="meta-table">
                         <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
                         <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
-                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
+                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{formatted_rec_date}</td></tr>
                     </table>
                     <table class="main-table">
                         <thead>
@@ -139,8 +154,8 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                         <tbody>{render_table_rows(prep_sub, p*ITEMS_PER_PAGE)}</tbody>
                     </table>
                     <table class="meta-table">
-                        <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
-                        <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
+                        <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{formatted_rec_date}</td></tr>
+                        <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{formatted_use_date}</td></tr>
                     </table>
                     <table class="footer-table">
                         <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
@@ -156,7 +171,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                     <table class="meta-table">
                         <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
                         <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
-                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{rec_date}</td></tr>
+                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{formatted_rec_date}</td></tr>
                     </table>
                     <table class="main-table">
                         <thead>
@@ -166,8 +181,8 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                         <tbody>{render_table_rows(butcher_sub, p*ITEMS_PER_PAGE)}</tbody>
                     </table>
                     <table class="meta-table">
-                        <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{rec_date}</td></tr>
-                        <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{use_date}</td></tr>
+                        <tr><td class="bg-gray" width="30%">วันที่รับ</td><td class="bg-yellow">{formatted_rec_date}</td></tr>
+                        <tr><td class="bg-gray">วันที่ใช้</td><td class="bg-yellow">{formatted_use_date}</td></tr>
                     </table>
                     <table class="footer-table">
                         <tr><td width="50%">Requested by: _________________</td><td width="50%" align="right">Issued by: _________________</td></tr>
@@ -243,7 +258,7 @@ def login_page():
 # ==========================================
 def main_kitchen_page():
     col1, col2 = st.columns([8, 1])
-    with col1: st.title("แบบฟอร์มการออเดอร์สินค้าครัวเมน (Main Kitchen)")
+    with col1: st.title("🍳 ศูนย์บัญชาการ: ครัวเมน (Main Kitchen)")
     with col2:
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in_dept = None
@@ -283,7 +298,7 @@ def main_kitchen_page():
     st.markdown("---")
     
     # --- ส่วนที่ 2: เลือกเมนูอาหาร ---
-    st.header("🛒 2. เลือกเมนูและจำนวนวัตถุดิบ")
+    st.header("🛒 2. เลือกและจัดเตรียมเมนูอาหาร")
     menu_list = master_df['Food_Name'].dropna().unique() if 'Food_Name' in master_df.columns else []
     selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", menu_list) if len(menu_list) > 0 else None
 
@@ -313,9 +328,11 @@ def main_kitchen_page():
             if event_type == "": st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
             else:
                 new_drafts = []
-                rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
-                use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
-                today_str = date.today().strftime("%Y-%m-%d")
+                rec_str = format_date_th(receive_date)
+                use_str = format_date_th(use_date)
+                
+                # วันและเวลาปัจจุบันสำหรับช่อง "วันที่สั่ง" (DD/MM/YYYY HH:MM)
+                now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
                 
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
@@ -325,7 +342,7 @@ def main_kitchen_page():
                                 'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
                                 'วัตถุดิบ': row.get('Item_Description', '-'), 'ครัวที่รับผิดชอบ': dept_name,
                                 'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
-                                'วันที่สั่ง': today_str
+                                'วันที่สั่ง': now_str
                             })
                 if new_drafts:
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
@@ -334,7 +351,7 @@ def main_kitchen_page():
     st.markdown("---")
     
     # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ISO ---
-    st.header("📤 3. สรุปรายการ")
+    st.header("📤 3. สรุปรายการในงานนี้")
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
     else:
@@ -373,7 +390,7 @@ def main_kitchen_page():
                     st.rerun()
 
         with c_submit:
-            if st.button("✅ ยืนยันออเดอร์", type="primary", use_container_width=True):
+            if st.button("✅ ยืนยันการส่งออเดอร์เข้าฐานข้อมูล Firebase", type="primary", use_container_width=True):
                 for _, row in st.session_state.draft_orders.iterrows():
                     o_data = row.to_dict()
                     o_data['timestamp'] = firestore.SERVER_TIMESTAMP
@@ -383,15 +400,13 @@ def main_kitchen_page():
                 st.rerun()
 
         st.markdown("---")
-        st.header("🖨️ ตัวอย่างแบบฟอร์ม สำหรับสั่งพิมพ์")
-        rec_str = receive_date.strftime("%Y-%m-%d") if receive_date else ""
-        use_str = use_date.strftime("%Y-%m-%d") if use_date else ""
+        st.header("🖨️ ตัวอย่างแบบฟอร์ม ISO สำหรับสั่งพิมพ์")
         
         # แสดงตารางแบบฟอร์ม ISO
-        html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, rec_str, use_str)
+        html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
         components.html(html_view, height=750 * total_p, scrolling=True)
 
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ (ดึงชื่องานจาก To) ---
+    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ ---
     st.markdown("---")
     st.header("📊 ประวัติการสั่งออเดอร์ทั้งหมด")
     
@@ -404,8 +419,8 @@ def main_kitchen_page():
         unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
         
         # Header สำหรับตารางประวัติ
-        p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2, 2.5, 2, 1, 2, 3, 2])
-        p_c1.markdown("**วันที่สั่ง**")
+        p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
+        p_c1.markdown("**วันที่และเวลาสั่ง**")
         p_c2.markdown("**ชื่องาน (To)**")
         p_c3.markdown("**ประเภทงาน**")
         p_c4.markdown("**จำนวนคน**")
@@ -415,12 +430,12 @@ def main_kitchen_page():
         st.markdown("---")
 
         for idx, job in unique_jobs.iterrows():
-            job_to = job.get('To', '-')            # ชื่องาน ดึงมาจาก To
+            job_to = job.get('To', '-')
             job_no = job.get('No (Function)', '-')
             job_event = job.get('ประเภทงาน', '-')
             job_pax = job.get('จำนวนคน', '-')
-            job_use_date = job.get('วันที่ใช้สินค้า', '-')
-            job_rec_date = job.get('วันที่รับสินค้า', '-')
+            job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
+            job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
             job_order_date = job.get('วันที่สั่ง', '-')
             
             # ดึงรายการวัตถุดิบทั้งหมดของงานนี้
@@ -433,12 +448,12 @@ def main_kitchen_page():
             status_list = job_items['สถานะ'].unique() if 'สถานะ' in job_items.columns else ['🔴 รอรับออเดอร์']
             main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
 
-            col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 2.5, 2, 1, 2, 3, 2])
-            col1.write(job_order_date)
-            col2.write(f"**{job_to}**")             # แสดงชื่องานจาก To
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
+            col1.write(job_order_date)              # แสดงวันและเวลาที่สั่ง (DD/MM/YYYY HH:MM)
+            col2.write(f"**{job_to}**")
             col3.write(job_event)
             col4.write(str(job_pax))
-            col5.write(job_use_date)
+            col5.write(job_use_date)                # แสดงวันที่ใช้สินค้า (DD/MM/YYYY)
             
             # ปุ่มพิมพ์แบบฟอร์ม ISO
             with col6:

@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timezone, timedelta
 import firebase_admin
 from firebase_admin import credentials, firestore
 import streamlit.components.v1 as components
@@ -23,10 +23,11 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ==========================================
-# 2. กำหนดโครงสร้างตารางข้อมูล
+# 2. กำหนดโครงสร้างตารางข้อมูล & Session State
 # ==========================================
 columns_format = ['No (Function)', 'ประเภทงาน', 'จำนวนคน', 'To', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า', 
-                 'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ', 'วันที่สั่ง', 'หมายเหตุ', 'is_printed']
+                  'เมนู', 'วัตถุดิบ', 'ครัวที่รับผิดชอบ', 'จำนวน', 'หน่วย', 'สถานะ', 'วันที่สั่ง', 'หมายเหตุ', 
+                  'is_printed_prep', 'is_printed_butcher']
 
 if 'draft_orders' not in st.session_state:
     st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
@@ -34,7 +35,7 @@ if 'draft_orders' not in st.session_state:
 if 'logged_in_dept' not in st.session_state:
     st.session_state.logged_in_dept = None
 
-# ตัวแปร Session State สำหรับฟอร์มรายละเอียดงาน
+# Session State สำหรับฟอร์มรายละเอียดงาน
 if 'event_type_input' not in st.session_state: st.session_state.event_type_input = ""
 if 'no_function_input' not in st.session_state: st.session_state.no_function_input = ""
 if 'pax_input' not in st.session_state: st.session_state.pax_input = 70
@@ -105,11 +106,11 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 4. ฟังก์ชันสร้าง HTML แบบฟอร์มสำหรับสั่งพิมพ์ (ขึ้นแผ่นที่ 2 เมื่อเกิน 18 รายการ)
+# 4. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
-    prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว Prep'].reset_index(drop=True)
-    butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์'].reset_index(drop=True)
+    prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].str.strip() == 'ครัว Prep'].reset_index(drop=True)
+    butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])].reset_index(drop=True)
     
     formatted_rec_date = format_date_th(rec_date)
     formatted_use_date = format_date_th(use_date)
@@ -120,7 +121,6 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
     total_pages = max(prep_pages, butcher_pages)
 
     pages_html = ""
-    
     for p in range(total_pages):
         prep_sub = prep_items.iloc[p*ITEMS_PER_PAGE : (p+1)*ITEMS_PER_PAGE]
         butcher_sub = butcher_items.iloc[p*ITEMS_PER_PAGE : (p+1)*ITEMS_PER_PAGE]
@@ -240,15 +240,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
     return html_content, total_pages
 
 master_df = load_master_recipes()
-
 st.set_page_config(page_title="ระบบสั่งวัตถุดิบครัว", layout="wide")
-
-st.markdown("""
-<style>
-div.stButton > button[kind="primary"] { background-color: #28a745 !important; border-color: #28a745 !important; color: white !important; }
-div.stButton > button[kind="primary"]:hover { background-color: #218838 !important; border-color: #1e7e34 !important; }
-</style>
-""", unsafe_allow_html=True)
 
 # ==========================================
 # 5. หน้าล็อกอิน (Login Page)
@@ -256,7 +248,7 @@ div.stButton > button[kind="primary"]:hover { background-color: #218838 !importa
 def login_page():
     st.title("🔐 เข้าสู่ระบบ (Login)")
     st.markdown("กรุณาเลือกแผนกของคุณเพื่อเข้าใช้งานระบบออเดอร์")
-    departments = ["Main Kitchen", "Prep", "Butcher", "Bakery", "Admin"]
+    departments = ["Main Kitchen", "Prep", "Butcher", "Admin"]
     selected_dept = st.selectbox("เลือกแผนก (Department):", departments)
     if st.button("เข้าสู่ระบบ"):
         st.session_state.logged_in_dept = selected_dept
@@ -283,7 +275,6 @@ def main_kitchen_page():
     h_col1, h_col2 = st.columns([8, 2])
     with h_col1: st.header("📝 1. ข้อมูลรายละเอียดงาน")
     with h_col2:
-        st.write("") 
         if st.button("🆕 ขึ้นใบงานใหม่ (Clear Form)"):
             st.session_state.event_type_input = ""
             st.session_state.no_function_input = ""
@@ -323,13 +314,13 @@ def main_kitchen_page():
             col_prep, col_butcher = st.columns(2)
             with col_prep:
                 st.markdown("#### 🥗 ครัว Prep")
-                p_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว Prep']
+                p_df = recipe_df[recipe_df['Kitchen_Dept'].str.strip() == 'ครัว Prep']
                 if not p_df.empty: 
                     edited_prep_df = st.data_editor(p_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"prep_{selected_menu}")
                 else: st.info("ไม่มีรายการ")
             with col_butcher:
                 st.markdown("#### 🥩 ครัว บุชเชอร์")
-                b_df = recipe_df[recipe_df['Kitchen_Dept'] == 'ครัว บุชเชอร์']
+                b_df = recipe_df[recipe_df['Kitchen_Dept'].str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])]
                 if not b_df.empty: 
                     edited_butcher_df = st.data_editor(b_df[display_cols], use_container_width=True, hide_index=True, disabled=["Item_Code", "Item_Description"], key=f"butcher_{selected_menu}")
                 else: st.info("ไม่มีรายการ")
@@ -341,8 +332,8 @@ def main_kitchen_page():
                 rec_str = format_date_th(receive_date)
                 use_str = format_date_th(use_date)
                 
-                now_th = datetime.utcnow() + timedelta(hours=7)
-                now_str = now_th.strftime("%d/%m/%Y %H:%M")
+                tz_th = timezone(timedelta(hours=7))
+                now_str = datetime.now(tz_th).strftime("%d/%m/%Y %H:%M")
                 
                 for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
                     if not df_part.empty:
@@ -352,62 +343,14 @@ def main_kitchen_page():
                                 'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
                                 'วัตถุดิบ': row.get('Item_Description', '-'), 'ครัวที่รับผิดชอบ': dept_name,
                                 'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
-                                'วันที่สั่ง': now_str, 'หมายเหตุ': '', 'is_printed': False
+                                'วันที่สั่ง': now_str, 'หมายเหตุ': '', 'is_printed_prep': False, 'is_printed_butcher': False
                             })
                 if new_drafts:
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
                     st.success(f"เพิ่มเมนู {selected_menu} เรียบร้อย!")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    with st.expander("➕ กรอกวัตถุดิบเพิ่มเติมพิเศษ (นอกเหนือจากสูตร Recipe)", expanded=False):
-        st.info("💡 ใช้ในกรณีต้องการสั่งวัตถุดิบเพิ่มเติมที่ไม่มีในสูตรอาหาร เช่น ผักตกแต่งพิเศษ, ซอสปรุงรสเพิ่มเติม ฯลฯ")
-        
-        custom_c1, custom_c2, custom_c3, custom_c4 = st.columns([2, 4, 2, 2])
-        with custom_c1:
-            custom_dept = st.selectbox("ครัวที่รับผิดชอบ:", ["ครัว Prep", "ครัว บุชเชอร์"], key="custom_dept")
-        with custom_c2:
-            custom_desc = st.text_input("ชื่อวัตถุดิบเพิ่มเติม:", placeholder="เช่น ผักชีฝรั่ง, พริกไทยอ่อน...", key="custom_desc")
-        with custom_c3:
-            custom_qty = st.number_input("จำนวน:", min_value=0.0, value=1.0, step=0.5, key="custom_qty")
-        with custom_c4:
-            custom_unit = st.text_input("หน่วย:", placeholder="เช่น กก., แพ็ค, ถุง...", key="custom_unit")
-            
-        custom_menu_ref = st.text_input("ชื่อเมนู / หมายเหตุอ้างอิง (เว้นว่างได้):", placeholder="เช่น สั่งพิเศษสำหรับไลน์บุฟเฟต์...", key="custom_menu_ref")
-        
-        if st.button("➕ เพิ่มวัตถุดิบพิเศษลงในออเดอร์", type="primary"):
-            if event_type == "":
-                st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
-            elif custom_desc.strip() == "":
-                st.error("กรุณากรอก 'ชื่อวัตถุดิบเพิ่มเติม' ครับ")
-            else:
-                rec_str = format_date_th(receive_date)
-                use_str = format_date_th(use_date)
-                now_th = datetime.utcnow() + timedelta(hours=7)
-                now_str = now_th.strftime("%d/%m/%Y %H:%M")
-                
-                menu_text = custom_menu_ref.strip() if custom_menu_ref.strip() != "" else "รายการเพิ่มเติมพิเศษ"
-                
-                custom_item = {
-                    'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
-                    'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 
-                    'เมนู': menu_text,
-                    'วัตถุดิบ': custom_desc.strip(), 
-                    'ครัวที่รับผิดชอบ': custom_dept,
-                    'จำนวน': custom_qty, 
-                    'หน่วย': custom_unit.strip() if custom_unit.strip() != "" else "หน่วย", 
-                    'สถานะ': '🔴 รอรับออเดอร์',
-                    'วันที่สั่ง': now_str,
-                    'หมายเหตุ': '',
-                    'is_printed': False
-                }
-                
-                st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame([custom_item])], ignore_index=True)
-                st.success(f"เพิ่มวัตถุดิบพิเศษ '{custom_desc}' ({custom_dept}) เรียบร้อยแล้ว!")
-                st.rerun()
-
+    # --- ส่วนที่ 3: สรุปรายการ ---
     st.markdown("---")
-    
-    # --- ส่วนที่ 3: สรุปรายการ & พิมพ์ตาราง ---
     st.header("📤 3. รายการวัตถุดิบ")
     if st.session_state.draft_orders.empty:
         st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
@@ -434,9 +377,7 @@ def main_kitchen_page():
                 for _, r in e_b.iterrows(): st.session_state.draft_orders.at[r['__index__'], 'จำนวน'] = r['จำนวน']
             else: st.info("ไม่มีรายการ")
 
-        st.markdown("<br>", unsafe_allow_html=True)
         c_del, c_submit = st.columns([4, 6])
-        
         with c_del:
             if st.button("🗑️ ลบรายการที่เลือก"):
                 to_del = []
@@ -456,107 +397,8 @@ def main_kitchen_page():
                 st.success("ส่งออเดอร์สำเร็จ!")
                 st.rerun()
 
-        st.markdown("---")
-        st.header("🖨️ ตัวอย่างแบบฟอร์มสำหรับสั่งพิมพ์")
-        
-        html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
-        components.html(html_view, height=750 * total_p, scrolling=True)
-
-    # --- ส่วนที่ 4: ประวัติการสั่งออเดอร์ ---
-    st.markdown("---")
-    st.header("📊 ประวัติการสั่งออเดอร์ และการแจ้งเตือนจากครัวเตรียม")
-    
-    m_tab1, m_tab2 = st.tabs(["📦 รายการออเดอร์ทั้งหมด", "📜 ประวัติการปรับเปลี่ยนวัตถุดิบจากครัวเตรียม"])
-
-    all_orders_df = load_orders()
-    
-    with m_tab1:
-        if not all_orders_df.empty:
-            if 'วันที่สั่ง' not in all_orders_df.columns: all_orders_df['วันที่สั่ง'] = '-'
-            if 'หมายเหตุ' not in all_orders_df.columns: all_orders_df['หมายเหตุ'] = ''
-                
-            unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
-            unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
-            
-            p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
-            p_c1.markdown("**วันที่และเวลาสั่ง**")
-            p_c2.markdown("**ชื่องาน (To)**")
-            p_c3.markdown("**ประเภทงาน**")
-            p_c4.markdown("**จำนวนคน**")
-            p_c5.markdown("**วันที่ใช้สินค้า**")
-            p_c6.markdown("**ดาวน์โหลด / พิมพ์เอกสาร**")
-            p_c7.markdown("**สถานะ**")
-            st.markdown("---")
-
-            for idx, job in unique_jobs.iterrows():
-                job_to = job.get('To', '-')
-                job_no = job.get('No (Function)', '-')
-                job_event = job.get('ประเภทงาน', '-')
-                job_pax = job.get('จำนวนคน', '-')
-                job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
-                job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
-                job_order_date = job.get('วันที่สั่ง', '-')
-                
-                job_items = all_orders_df[
-                    (all_orders_df['To'] == job_to) & 
-                    (all_orders_df['ประเภทงาน'] == job_event) &
-                    (all_orders_df['วันที่สั่ง'] == job_order_date)
-                ]
-                
-                status_list = job_items['สถานะ'].unique() if 'สถานะ' in job_items.columns else ['🔴 รอรับออเดอร์']
-                main_status = status_list[0] if len(status_list) > 0 else '🔴 รอรับออเดอร์'
-
-                col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2.5, 2, 1, 2, 3, 2])
-                col1.write(job_order_date)
-                col2.write(f"**{job_to}**")
-                col3.write(job_event)
-                col4.write(str(job_pax))
-                col5.write(job_use_date)
-                
-                with col6:
-                    if st.button(f"🖨️ พิมพ์/ดูเอกสาร", key=f"btn_print_{idx}"):
-                        st.session_state[f"show_modal_{idx}"] = not st.session_state.get(f"show_modal_{idx}", False)
-
-                col7.write(main_status)
-
-                remarks_in_job = [str(r).strip() for r in job_items['หมายเหตุ'].dropna().unique() if str(r).strip() != '']
-                if remarks_in_job:
-                    st.info(f"💬 **หมายเหตุจากครัวเตรียม ({job_to}):** {', '.join(remarks_in_job)}")
-
-                if st.session_state.get(f"show_modal_{idx}", False):
-                    with st.expander(f"📄 แบบฟอร์มงาน: {job_to} ({job_event})", expanded=True):
-                        hist_html, hist_pages = generate_printable_html(
-                            job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
-                        )
-                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
-                st.markdown("<hr style='margin: 5px 0; border-top: 1px dashed #ccc;'>", unsafe_allow_html=True)
-        else:
-            st.info("ยังไม่มีประวัติการสั่งออเดอร์ครับ")
-
-    with m_tab2:
-        st.subheader("📜 ประวัติการแก้ไขชื่อ/ปริมาณวัตถุดิบ จากครัวรับงาน")
-        logs_df = load_history_logs()
-        if not logs_df.empty:
-            rename_map = {
-                'edit_time': 'เวลาที่แก้ไข',
-                'editor_dept': 'ครัวที่แก้ไข',
-                'job_to': 'ชื่องาน (To)',
-                'orig_desc': 'ชื่อเดิม',
-                'new_desc': 'ชื่อใหม่',
-                'orig_qty': 'จำนวนเดิม',
-                'new_qty': 'จำนวนใหม่',
-                'unit': 'หน่วย'
-            }
-            logs_df = logs_df.rename(columns=rename_map)
-            show_cols = [c for c in ['เวลาที่แก้ไข', 'ครัวที่แก้ไข', 'ชื่องาน (To)', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in logs_df.columns]
-            if 'เวลาที่แก้ไข' in logs_df.columns:
-                logs_df = logs_df.sort_values(by='เวลาที่แก้ไข', ascending=False)
-            st.dataframe(logs_df[show_cols], use_container_width=True, hide_index=True)
-        else:
-            st.info("ยังไม่มีประวัติการแก้ไขข้อมูลวัตถุดิบจากครัวรับงานครับ")
-
 # ==========================================
-# 7. หน้า Admin
+# 7. หน้า Admin (จัดการสูตรอาหาร)
 # ==========================================
 def admin_page():
     col1, col2 = st.columns([8, 1])
@@ -598,38 +440,21 @@ def admin_page():
                             'Unit': str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""
                         }
                         db.collection('master_recipes').add(new_data)
+                        
+                        # อัปเดตตารางเพื่อไม่ให้ Item Code ซ้ำกันใน Batch
+                        temp_master = pd.concat([temp_master, pd.DataFrame([new_data])], ignore_index=True)
                         success_count += 1
                 if success_count > 0:
                     st.success(f"บันทึกเมนู '{food_name}' สำเร็จ {success_count} รายการ!")
                     st.rerun()
 
-    st.markdown("---")
-    st.header("📋 รายการสูตรอาหารทั้งหมด")
-    current_master = load_master_recipes()
-    if not current_master.empty:
-        display_admin_df = current_master.copy()
-        display_admin_df.insert(0, '🗑️ ลบ', False)
-        cols_to_show = [c for c in ['🗑️ ลบ', 'Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'] if c in display_admin_df.columns]
-        edited_master = st.data_editor(display_admin_df[cols_to_show], use_container_width=True, hide_index=True, disabled=['Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'])
-        
-        if st.button("❌ ลบรายการสูตรอาหารที่เลือก"):
-            to_del_rows = edited_master[edited_master['🗑️ ลบ'] == True]
-            if not to_del_rows.empty:
-                count = 0
-                for idx, row in to_del_rows.iterrows():
-                    match_doc = current_master[(current_master['Food_Name'] == row['Food_Name']) & (current_master['Item_Description'] == row['Item_Description'])]
-                    for doc_id in match_doc['doc_id']:
-                        db.collection('master_recipes').document(doc_id).delete()
-                        count += 1
-                st.success(f"ลบรายการสำเร็จ {count} รายการ!")
-                st.rerun()
-
 # ==========================================
-# 8. หน้าของครัวรับงาน (Prep, Butcher, Bakery)
+# 8. หน้าของครัวรับงาน (Prep / Butcher)
 # ==========================================
 def receiver_kitchen_page(dept_name):
-    dept_mapping = {"Prep": "ครัว Prep", "Butcher": "ครัว บุชเชอร์", "Bakery": "ครัว Bakery"}
+    dept_mapping = {"Prep": "ครัว Prep", "Butcher": "ครัว บุชเชอร์"}
     target_dept = dept_mapping.get(dept_name, dept_name)
+    print_field = "is_printed_prep" if target_dept == "ครัว Prep" else "is_printed_butcher"
     
     col1, col2 = st.columns([8, 1])
     with col1: st.title(f"🔪 หน้าจอจัดการออเดอร์: {target_dept}")
@@ -639,10 +464,6 @@ def receiver_kitchen_page(dept_name):
             st.rerun()
             
     st.markdown("---")
-    
-    if st.button("🔄 อัปเดตข้อมูลล่าสุด"): 
-        st.rerun()
-
     all_orders = load_orders()
     if all_orders.empty:
         st.info("🎉 ยังไม่มีออเดอร์เข้ามาในระบบครับ")
@@ -653,185 +474,49 @@ def receiver_kitchen_page(dept_name):
         st.info(f"🎉 ยังไม่มีออเดอร์ของ {target_dept} ในขณะนี้ครับ")
         return
 
-    tab1, tab2, tab3 = st.tabs(["📦 รายการออเดอร์ตามงาน", "📊 สรุปยอดวัตถุดิบรวมประจำวัน", "📜 ประวัติการแก้ไขออเดอร์"])
+    unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+    unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
 
-    with tab1:
-        st.header(f"📥 ออเดอร์วัตถุดิบสำหรับ {target_dept}")
+    for idx, job in unique_jobs.iterrows():
+        job_to = job.get('To', '-')
+        job_no = job.get('No (Function)', '-')
+        job_event = job.get('ประเภทงาน', '-')
+        job_pax = job.get('จำนวนคน', '-')
+        job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
+        job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
+        job_order_date = job.get('วันที่สั่ง', '-')
         
-        if 'วันที่สั่ง' not in my_orders.columns: my_orders['วันที่สั่ง'] = '-'
-        if 'หมายเหตุ' not in my_orders.columns: my_orders['หมายเหตุ'] = ''
-        if 'is_printed' not in my_orders.columns: my_orders['is_printed'] = False
-            
-        unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
-        unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
+        job_items = my_orders[
+            (my_orders['To'] == job_to) & 
+            (my_orders['ประเภทงาน'] == job_event) &
+            (my_orders['วันที่สั่ง'] == job_order_date)
+        ].reset_index(drop=True)
 
-        for idx, job in unique_jobs.iterrows():
-            job_to = job.get('To', '-')
-            job_no = job.get('No (Function)', '-')
-            job_event = job.get('ประเภทงาน', '-')
-            job_pax = job.get('จำนวนคน', '-')
-            job_rec_date = format_date_th(job.get('วันที่รับสินค้า', '-'))
-            job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
-            job_order_date = job.get('วันที่สั่ง', '-')
-            
-            full_job_items = all_orders[
-                (all_orders['To'] == job_to) & 
-                (all_orders['ประเภทงาน'] == job_event) &
-                (all_orders['วันที่สั่ง'] == job_order_date)
-            ].reset_index(drop=True)
+        is_job_printed = any(job_items[print_field].fillna(False)) if print_field in job_items.columns else False
+        print_status_text = " : [🟢 พิมพ์ใบเบิกแล้ว]" if is_job_printed else ""
 
-            job_items = my_orders[
-                (my_orders['To'] == job_to) & 
-                (my_orders['ประเภทงาน'] == job_event) &
-                (my_orders['วันที่สั่ง'] == job_order_date)
-            ].reset_index(drop=True)
-
-            # เช็คว่างานนี้เคยพิมพ์หรือยัง (ถ้ามีอย่างน้อย 1 รายการเป็น True ถือว่าพิมพ์แล้ว)
-            is_job_printed = any(job_items['is_printed'].fillna(False))
-            print_status_text = " : [🟢 พิมพ์ใบเบิกแล้ว]" if is_job_printed else ""
-
-            # แสดงหัวข้อการ์ด (งาน | ประเภท | จำนวนคน | วันที่รับสินค้า | วันที่ใช้งาน | สถานะพิมพ์แล้ว)
-            header_text = f"📌 งาน: {job_to} | ประเภท: {job_event} | {job_pax} คน | วันที่รับสินค้า: {job_rec_date} | วันที่ใช้งาน: {job_use_date}{print_status_text}"
-            
-            with st.expander(header_text, expanded=False):
-                # 🟢 ย้ายปุ่มพิมพ์ใบเบิก + ช่องติ๊ก "พิมพ์แล้ว" มาไว้ด้านบนสุดของการ์ด
-                p_col1, p_col2 = st.columns([3, 7])
-                with p_col1:
-                    if st.button(f"🖨️ พิมพ์ใบเบิก", key=f"rec_btn_print_{idx}"):
-                        st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
-                with p_col2:
-                    # ช่องติ๊กพิมพ์แล้ว
-                    chk_printed = st.checkbox("☑️ พิมพ์แล้ว", value=is_job_printed, key=f"chk_printed_{idx}")
-                    if chk_printed != is_job_printed:
-                        for doc_id in job_items['doc_id']:
-                            db.collection('orders').document(doc_id).update({'is_printed': chk_printed})
-                        st.success("บันทึกสถานะการพิมพ์เรียบร้อยแล้ว!")
-                        st.rerun()
-
-                if st.session_state.get(f"rec_show_modal_{idx}", False):
-                    with st.container():
-                        st.markdown("---")
-                        st.subheader(f"📄 แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (งาน: {job_to})")
-                        hist_html, hist_pages = generate_printable_html(
-                            full_job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
-                        )
-                        components.html(hist_html, height=750 * hist_pages, scrolling=True)
-
-                st.markdown("---")
-                st.markdown(f"🗓️ **วันที่สั่งออเดอร์:** `{job_order_date}`")
-
-                st.markdown("**✏️ รายการวัตถุดิบ (สามารถแก้ไขชื่อสินค้าและจำนวนได้):**")
-                
-                edit_cols = ['วัตถุดิบ', 'จำนวน', 'หน่วย', 'เมนู']
-                available_cols = [c for c in edit_cols if c in job_items.columns]
-                
-                edited_df = st.data_editor(
-                    job_items[available_cols],
-                    use_container_width=True,
-                    hide_index=True,
-                    disabled=['หน่วย', 'เมนู'],
-                    key=f"editor_job_{idx}"
-                )
-
-                if st.button("💾 บันทึกการแก้ไขวัตถุดิบ", key=f"btn_save_items_{idx}"):
-                    now_th = (datetime.utcnow() + timedelta(hours=7)).strftime("%d/%m/%Y %H:%M")
-                    changes_made = 0
-                    
-                    for i, row in edited_df.iterrows():
-                        orig_row = job_items.iloc[i]
-                        doc_id = orig_row.get('doc_id')
-                        
-                        new_desc = str(row['วัตถุดิบ']).strip()
-                        new_qty = float(row['จำนวน'])
-                        
-                        orig_desc = str(orig_row['วัตถุดิบ']).strip()
-                        orig_qty = float(orig_row['จำนวน'])
-                        
-                        if (new_desc != orig_desc) or (new_qty != orig_qty):
-                            db.collection('orders').document(doc_id).update({
-                                'วัตถุดิบ': new_desc,
-                                'จำนวน': new_qty
-                            })
-                            
-                            log_data = {
-                                'job_to': job_to,
-                                'job_event': job_event,
-                                'editor_dept': target_dept,
-                                'edit_time': now_th,
-                                'orig_desc': orig_desc,
-                                'new_desc': new_desc,
-                                'orig_qty': orig_qty,
-                                'new_qty': new_qty,
-                                'unit': orig_row.get('หน่วย', '')
-                            }
-                            db.collection('order_history_logs').add(log_data)
-                            changes_made += 1
-                            
-                    if changes_made > 0:
-                        st.success(f"บันทึกการปรับเปลี่ยนวัตถุดิบสำเร็จ {changes_made} รายการ (ส่งข้อมูลแจ้งเตือนไปยังครัวเมนเรียบร้อยแล้ว)")
-                        st.rerun()
-                    else:
-                        st.info("ไม่มีการเปลี่ยนแปลงข้อมูลวัตถุดิบ")
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                current_remark = ""
-                if not job_items.empty and 'หมายเหตุ' in job_items.columns:
-                    val = job_items['หมายเหตุ'].iloc[0]
-                    current_remark = str(val) if pd.notna(val) else ""
-
-                new_remark = st.text_area("💬 หมายเหตุ / ข้อความสื่อสารระหว่างครัว (ส่งถึงครัวเมน):", value=current_remark, placeholder="ระบุข้อความเพิ่มเติมหรือแจ้งปัญหาวัตถุดิบที่นี่...", key=f"remark_{idx}")
-                
-                if st.button("💬 บันทึกหมายเหตุ", key=f"btn_save_remark_{idx}"):
+        header_text = f"📌 งาน: {job_to} | ประเภท: {job_event} | {job_pax} คน | วันที่รับสินค้า: {job_rec_date} | วันที่ใช้งาน: {job_use_date}{print_status_text}"
+        
+        with st.expander(header_text, expanded=False):
+            p_col1, p_col2 = st.columns([3, 7])
+            with p_col1:
+                if st.button(f"🖨️ พิมพ์ใบเบิก", key=f"rec_btn_print_{idx}"):
+                    st.session_state[f"rec_show_modal_{idx}"] = not st.session_state.get(f"rec_show_modal_{idx}", False)
+            with p_col2:
+                chk_printed = st.checkbox("☑️ พิมพ์แล้ว", value=is_job_printed, key=f"chk_printed_{idx}")
+                if chk_printed != is_job_printed:
                     for doc_id in job_items['doc_id']:
-                        db.collection('orders').document(doc_id).update({'หมายเหตุ': new_remark.strip()})
-                    st.success("บันทึกหมายเหตุสื่อสารเรียบร้อยแล้ว!")
+                        db.collection('orders').document(doc_id).update({print_field: chk_printed})
+                    st.success("บันทึกสถานะการพิมพ์เรียบร้อยแล้ว!")
                     st.rerun()
 
-    with tab2:
-        st.header(f"📊 สรุปยอดรวมวัตถุดิบที่ต้องเตรียม ({target_dept})")
-        st.info("💡 หน้านี้จะรวมยอดจำนวนวัตถุดิบชนิดเดียวกันของทุกงานเข้าด้วยกัน เพื่อให้เตรียมของทีเดียวได้สะดวกยิ่งขึ้น")
-        
-        all_rec_dates = my_orders['วันที่รับสินค้า'].unique().tolist()
-        selected_filter_date = st.selectbox("เลือกวันที่รับสินค้า (Delivery Date):", ["ทั้งหมด"] + all_rec_dates)
-        
-        filtered_orders = my_orders.copy()
-        if selected_filter_date != "ทั้งหมด":
-            filtered_orders = filtered_orders[filtered_orders['วันที่รับสินค้า'] == selected_filter_date]
-
-        if not filtered_orders.empty:
-            summary_grouped = filtered_orders.groupby(['วัตถุดิบ', 'หน่วย'])['จำนวน'].sum().reset_index()
-            summary_grouped.columns = ['วัตถุดิบ', 'หน่วย', 'ยอดรวมจำนวนที่ต้องเตรียม']
-            st.dataframe(summary_grouped, use_container_width=True, hide_index=True)
-        else:
-            st.warning("ไม่มีรายการวัตถุดิบตามวันที่เลือก")
-
-    with tab3:
-        st.header("📜 ประวัติการบันทึกแก้ไขวัตถุดิบ (Audit Log)")
-        logs_df = load_history_logs()
-        if not logs_df.empty and 'editor_dept' in logs_df.columns:
-            dept_logs = logs_df[logs_df['editor_dept'] == target_dept].copy()
-            if not dept_logs.empty:
-                rename_map = {
-                    'edit_time': 'เวลาที่แก้ไข',
-                    'job_to': 'ชื่องาน (To)',
-                    'orig_desc': 'ชื่อเดิม',
-                    'new_desc': 'ชื่อใหม่',
-                    'orig_qty': 'จำนวนเดิม',
-                    'new_qty': 'จำนวนใหม่',
-                    'unit': 'หน่วย'
-                }
-                dept_logs = dept_logs.rename(columns=rename_map)
-                show_cols = [c for c in ['เวลาที่แก้ไข', 'ชื่องาน (To)', 'ชื่อเดิม', 'ชื่อใหม่', 'จำนวนเดิม', 'จำนวนใหม่', 'หน่วย'] if c in dept_logs.columns]
-                
-                if 'เวลาที่แก้ไข' in dept_logs.columns:
-                    dept_logs = dept_logs.sort_values(by='เวลาที่แก้ไข', ascending=False)
-                    
-                st.dataframe(dept_logs[show_cols], use_container_width=True, hide_index=True)
-            else:
-                st.info("ยังไม่มีประวัติการแก้ไขข้อมูลวัตถุดิบในครัวนี้")
-        else:
-            st.info("ยังไม่มีประวัติการแก้ไขข้อมูลวัตถุดิบ")
+            if st.session_state.get(f"rec_show_modal_{idx}", False):
+                with st.container():
+                    st.markdown("---")
+                    hist_html, hist_pages = generate_printable_html(
+                        job_items, job_event, job_pax, job_to, job_no, job_rec_date, job_use_date
+                    )
+                    components.html(hist_html, height=750 * hist_pages, scrolling=True)
 
 # ==========================================
 # 9. ระบบควบคุมเส้นทางหน้าจอ (Router)

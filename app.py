@@ -23,7 +23,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ==========================================
-# 2. ตั้งค่าหน้าเว็บ & Custom CSS (คลีนบั๊กไอคอนซ้อน + ตีกรอบสวยงาม)
+# 2. ตั้งค่าหน้าเว็บ & Custom CSS (แก้บั๊ก .arrow ซ้อน 100%)
 # ==========================================
 st.set_page_config(
     page_title="ระบบสั่งวัตถุดิบห้องครัว",
@@ -37,7 +37,7 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap');
 
     /* ฟอนต์หลักทั้งระบบ */
-    html, body, [class*="css"], .stMarkdown, p, div, span, label, input, select, textarea, button {
+    html, body, .stApp, p, label, input, select, textarea, button {
         font-family: 'Kanit', sans-serif !important;
     }
 
@@ -61,7 +61,15 @@ st.markdown("""
         margin-bottom: 1.5rem !important;
     }
 
-    /* ตกแต่ง Expander (การ์ดงาน) - แก้ไขบั๊กข้อความซ้อนไอคอนลูกศร */
+    /* 🟢 แก้บั๊ก _arrow_right: ซ่อนไอคอนลูกศรเดิมของ Streamlit ที่แสดงผลผิดพลาดออก */
+    div[data-testid="stExpander"] details summary span[data-testid="stExpanderToggleIcon"] {
+        display: none !important;
+    }
+    div[data-testid="stExpander"] details summary svg {
+        display: none !important;
+    }
+
+    /* ตกแต่งการ์ดงาน (Expander) */
     div[data-testid="stExpander"] {
         background-color: #1E293B !important;
         border: 1px solid #334155 !important;
@@ -73,7 +81,8 @@ st.markdown("""
         background-color: #1E293B !important;
         color: #F8FAFC !important;
         font-weight: 500 !important;
-        padding: 10px 14px !important;
+        padding: 12px 16px !important;
+        border-radius: 8px !important;
     }
 
     div[data-testid="stExpander"] details summary:hover {
@@ -174,78 +183,80 @@ def load_master_recipes():
             d['doc_id'] = doc.id 
             data.append(d)
             
-        if not data:
-            # ✨ AUTO-SEED: ข้อมูล Master Recipes ทั้งหมดจากไฟล์เริ่มโปรเจกต์
-            initial_recipes = [
-                {'Recipe_Code': 'EU001', 'Food_Name': 'แกะอบซอสไทม์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-001', 'Item_Description': 'ซี่โครงแกะสไลด์', 'Std_Quantity': 1.0, 'Unit': 'Pc.'},
-                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-002', 'Item_Description': 'ไก่กรอบปาปริก้า', 'Std_Quantity': 1.0, 'Unit': 'Pc.'},
-                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-001', 'Item_Description': 'มายองเนส', 'Std_Quantity': 2.0, 'Unit': 'Pack'},
-                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-002', 'Item_Description': 'ครีมสลัด', 'Std_Quantity': 1.0, 'Unit': 'Pack'},
-                {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-003', 'Item_Description': 'หอมแดง', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU003', 'Food_Name': 'ไก่พิกกาต้า', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 1.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU003', 'Food_Name': 'ไก่พิกกาต้า', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-004', 'Item_Description': 'แฮมไก่หั่นเส้น', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU004', 'Food_Name': 'ไก่ย่างยากิโทริเสียบไม้', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-005', 'Item_Description': 'ไก่เสียบไม้ยากิโทริ', 'Std_Quantity': 2.0, 'Unit': 'Pc.'},
-                {'Recipe_Code': 'EU004', 'Food_Name': 'ไก่ย่างยากิโทริเสียบไม้', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-004', 'Item_Description': 'ต้นหอมซอย', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU005', 'Food_Name': 'ไก่ทอดเทอริยากิ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-005', 'Item_Description': 'ต้นหอมซอย', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU005', 'Food_Name': 'ไก่ทอดเทอริยากิ', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-006', 'Item_Description': 'สะโพกไก่เลาะกระดูก', 'Std_Quantity': 8.0, 'Unit': 'Kg'},
-                {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-006', 'Item_Description': 'ลูกพรุน', 'Std_Quantity': 500.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 100.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-007', 'Item_Description': 'หมูสันในยัดไส้ลูกพรุน', 'Std_Quantity': 1.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-010', 'Item_Description': 'มันฝรั่งหั่นเต่ากลาง', 'Std_Quantity': 5.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-011', 'Item_Description': 'แครอทหั่นเต่ากลาง', 'Std_Quantity': 5.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-012', 'Item_Description': 'พริกยักษ์ 3 สีหั่นเต๋ากลาง', 'Std_Quantity': 3.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-013', 'Item_Description': 'หอมหัวใหญ่หั่นเต๋าเล็ก', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-008', 'Item_Description': 'เนื้อหมูหั่นเต๋าใหญ่', 'Std_Quantity': 7.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU008', 'Food_Name': 'ซี่โครงหมูอบซอสบาร์บิคิว', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-009', 'Item_Description': 'ซี่โครงหมูหั่น 1 นิ้ว', 'Std_Quantity': 9.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU008', 'Food_Name': 'ซี่โครงหมูอบซอสบาร์บิคิว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-020', 'Item_Description': 'ผักซัสเซียน', 'Std_Quantity': 1.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU009', 'Food_Name': 'ไก่อบซอสพริกระฆัง 3 สี', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-014', 'Item_Description': 'พริกยักษ์ 3 สีสไลด์เส้น', 'Std_Quantity': 2.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU009', 'Food_Name': 'ไก่อบซอสพริกระฆัง 3 สี', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU009', 'Food_Name': 'ไก่อบซอสพริกระฆัง 3 สี', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 8.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 500.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 500.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-015', 'Item_Description': 'เห็ดฝางสไลด์', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-016', 'Item_Description': 'เห็ดหอมสไลด์', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-010', 'Item_Description': 'หมูสันในมัดเชือก', 'Std_Quantity': 8.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-003', 'Item_Description': 'หอมแดง', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-017', 'Item_Description': 'กระเทียม', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-018', 'Item_Description': 'มะเขือเทศหั่นเต๋าเล็ก', 'Std_Quantity': 400.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-019', 'Item_Description': 'เนยจืด', 'Std_Quantity': 1.0, 'Unit': 'Box'},
-                {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-011', 'Item_Description': 'ปลากะพงขาวสไลด์', 'Std_Quantity': 8.0, 'Unit': 'Kg.'},
-                {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Bakery', 'Item_Code': 'BA-001', 'Item_Description': 'โวลโอวอง', 'Std_Quantity': 1.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-021', 'Item_Description': 'เห็ดฝางหั่นเต๋าเล็ก', 'Std_Quantity': 5.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-022', 'Item_Description': 'ครีม', 'Std_Quantity': 1.0, 'Unit': 'Box'},
-                {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-023', 'Item_Description': 'นม', 'Std_Quantity': 0.5, 'Unit': 'แกลอน'},
-                {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'BU-012', 'Item_Description': 'อกไก่หั่นเต๋าเล็ก', 'Std_Quantity': 50.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-013', 'Item_Description': 'ไก่เสียบไม้', 'Std_Quantity': 1.0, 'Unit': 'ไม้'},
-                {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-024', 'Item_Description': 'พริกยักษ์ 3 สี สำหรับเสียบไม้', 'Std_Quantity': 10.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-025', 'Item_Description': 'หอมหัวใหญ่ สำหรับเสียบไม้', 'Std_Quantity': 10.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-026', 'Item_Description': 'มะเขือเทศราชินี', 'Std_Quantity': 5.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 2.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 70.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 2.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 70.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 2.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 70.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-022', 'Item_Description': 'ครีม', 'Std_Quantity': 1.0, 'Unit': 'Box'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-023', 'Item_Description': 'นม', 'Std_Quantity': 0.5, 'Unit': 'แกลอน'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-003', 'Item_Description': 'หอมแดง', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-017', 'Item_Description': 'กระเทียม', 'Std_Quantity': 300.0, 'Unit': 'g.'},
-                {'Recipe_Code': 'EU017', 'Food_Name': 'ขนมปังกระเทียม', 'Kitchen_Dept': 'ครัว Bakery', 'Item_Code': 'BA-002', 'Item_Description': 'ขนมปังเฟรชเบรค', 'Std_Quantity': 1.0, 'Unit': 'แท่ง'}
-            ]
-            for item in initial_recipes:
+        initial_recipes = [
+            {'Recipe_Code': 'EU001', 'Food_Name': 'แกะอบซอสไทม์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-001', 'Item_Description': 'ซี่โครงแกะสไลด์', 'Std_Quantity': 1.0, 'Unit': 'Pc.'},
+            {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-002', 'Item_Description': 'ไก่กรอบปาปริก้า', 'Std_Quantity': 1.0, 'Unit': 'Pc.'},
+            {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-001', 'Item_Description': 'มายองเนส', 'Std_Quantity': 2.0, 'Unit': 'Pack'},
+            {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-002', 'Item_Description': 'ครีมสลัด', 'Std_Quantity': 1.0, 'Unit': 'Pack'},
+            {'Recipe_Code': 'EU002', 'Food_Name': 'ไก่กรอบปาปริก้าซอสทาร์ทาร์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-003', 'Item_Description': 'หอมแดง', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU003', 'Food_Name': 'ไก่พิกกาต้า', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 1.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU003', 'Food_Name': 'ไก่พิกกาต้า', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-004', 'Item_Description': 'แฮมไก่หั่นเส้น', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU004', 'Food_Name': 'ไก่ย่างยากิโทริเสียบไม้', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-005', 'Item_Description': 'ไก่เสียบไม้ยากิโทริ', 'Std_Quantity': 2.0, 'Unit': 'Pc.'},
+            {'Recipe_Code': 'EU004', 'Food_Name': 'ไก่ย่างยากิโทริเสียบไม้', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-004', 'Item_Description': 'ต้นหอมซอย', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU005', 'Food_Name': 'ไก่ทอดเทอริยากิ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-005', 'Item_Description': 'ต้นหอมซอย', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU005', 'Food_Name': 'ไก่ทอดเทอริยากิ', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-006', 'Item_Description': 'สะโพกไก่เลาะกระดูก', 'Std_Quantity': 8.0, 'Unit': 'Kg'},
+            {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-006', 'Item_Description': 'ลูกพรุน', 'Std_Quantity': 500.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 100.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU006', 'Food_Name': 'หมูอบซอสไวน์หวานลูกพรุน', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-007', 'Item_Description': 'หมูสันในยัดไส้ลูกพรุน', 'Std_Quantity': 1.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-010', 'Item_Description': 'มันฝรั่งหั่นเต่ากลาง', 'Std_Quantity': 5.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-011', 'Item_Description': 'แครอทหั่นเต่ากลาง', 'Std_Quantity': 5.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-012', 'Item_Description': 'พริกยักษ์ 3 สีหั่นเต๋ากลาง', 'Std_Quantity': 3.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-013', 'Item_Description': 'หอมหัวใหญ่หั่นเต๋าเล็ก', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU007', 'Food_Name': 'สตูว์หมู', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-008', 'Item_Description': 'เนื้อหมูหั่นเต๋าใหญ่', 'Std_Quantity': 7.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU008', 'Food_Name': 'ซี่โครงหมูอบซอสบาร์บิคิว', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-009', 'Item_Description': 'ซี่โครงหมูหั่น 1 นิ้ว', 'Std_Quantity': 9.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU008', 'Food_Name': 'ซี่โครงหมูอบซอสบาร์บิคิว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-020', 'Item_Description': 'ผักซัสเซียน', 'Std_Quantity': 1.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU009', 'Food_Name': 'ไก่อบซอสพริกระฆัง 3 สี', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-014', 'Item_Description': 'พริกยักษ์ 3 สีสไลด์เส้น', 'Std_Quantity': 2.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU009', 'Food_Name': 'ไก่อบซอสพริกระฆัง 3 สี', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU009', 'Food_Name': 'ไก่อบซอสพริกระฆัง 3 สี', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 8.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 500.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 500.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-015', 'Item_Description': 'เห็ดฝางสไลด์', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-016', 'Item_Description': 'เห็ดหอมสไลด์', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU010', 'Food_Name': 'หมูสันในย่างซอสเห็ดรวม', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-010', 'Item_Description': 'หมูสันในมัดเชือก', 'Std_Quantity': 8.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-003', 'Item_Description': 'หอมแดง', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-017', 'Item_Description': 'กระเทียม', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 200.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-018', 'Item_Description': 'มะเขือเทศหั่นเต๋าเล็ก', 'Std_Quantity': 400.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-019', 'Item_Description': 'เนยจืด', 'Std_Quantity': 1.0, 'Unit': 'Box'},
+            {'Recipe_Code': 'EU011', 'Food_Name': 'ปลากะพงอบซอสเนยมะนาว', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-011', 'Item_Description': 'ปลากะพงขาวสไลด์', 'Std_Quantity': 8.0, 'Unit': 'Kg.'},
+            {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Bakery', 'Item_Code': 'BA-001', 'Item_Description': 'โวลโอวอง', 'Std_Quantity': 1.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-021', 'Item_Description': 'เห็ดฝางหั่นเต๋าเล็ก', 'Std_Quantity': 5.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-022', 'Item_Description': 'ครีม', 'Std_Quantity': 1.0, 'Unit': 'Box'},
+            {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-023', 'Item_Description': 'นม', 'Std_Quantity': 0.5, 'Unit': 'แกลอน'},
+            {'Recipe_Code': 'EU012', 'Food_Name': 'ไก่และเห็ดโวลโอวอง', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'BU-012', 'Item_Description': 'อกไก่หั่นเต๋าเล็ก', 'Std_Quantity': 50.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-013', 'Item_Description': 'ไก่เสียบไม้', 'Std_Quantity': 1.0, 'Unit': 'ไม้'},
+            {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-024', 'Item_Description': 'พริกยักษ์ 3 สี สำหรับเสียบไม้', 'Std_Quantity': 10.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-025', 'Item_Description': 'หอมหัวใหญ่ สำหรับเสียบไม้', 'Std_Quantity': 10.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU013', 'Food_Name': 'ไก่เสียบไม้ย่างซอส BBQ', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-026', 'Item_Description': 'มะเขือเทศราชินี', 'Std_Quantity': 5.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 2.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU014', 'Food_Name': 'ไก่อบซอสไทม์', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 70.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 2.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU015', 'Food_Name': 'ไก่อบซอสโรสแมรี่', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 70.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-007', 'Item_Description': 'บร็อคโคลี่ (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-008', 'Item_Description': 'แครอท (ผักแต่ง)', 'Std_Quantity': 15.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-009', 'Item_Description': 'พาสลี่', 'Std_Quantity': 2.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว บุชเชอร์', 'Item_Code': 'BU-003', 'Item_Description': 'อกไก่', 'Std_Quantity': 70.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-022', 'Item_Description': 'ครีม', 'Std_Quantity': 1.0, 'Unit': 'Box'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-023', 'Item_Description': 'นม', 'Std_Quantity': 0.5, 'Unit': 'แกลอน'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-003', 'Item_Description': 'หอมแดง', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU016', 'Food_Name': 'ไก่อบซอสไวน์ขาว', 'Kitchen_Dept': 'ครัว Prep', 'Item_Code': 'PE-017', 'Item_Description': 'กระเทียม', 'Std_Quantity': 300.0, 'Unit': 'g.'},
+            {'Recipe_Code': 'EU017', 'Food_Name': 'ขนมปังกระเทียม', 'Kitchen_Dept': 'ครัว Bakery', 'Item_Code': 'BA-002', 'Item_Description': 'ขนมปังเฟรชเบรค', 'Std_Quantity': 1.0, 'Unit': 'แท่ง'}
+        ]
+        
+        existing_foods = set([d.get('Food_Name') for d in data]) if data else set()
+        for item in initial_recipes:
+            if item['Food_Name'] not in existing_foods:
                 db.collection('master_recipes').add(item)
-            return pd.DataFrame(initial_recipes)
+                data.append(item)
+                existing_foods.add(item['Food_Name'])
             
         return pd.DataFrame(data)
     except Exception as e:
@@ -442,7 +453,6 @@ def login_page():
 def main_kitchen_page():
     col1, col2 = st.columns([8, 2])
     with col1: 
-        # ปรับแก้ข้อความตามความต้องการ
         st.markdown('<div class="main-title">🍳 ครัวเมน (Main Kitchen)</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-title-text">ออกใบสั่งวัตถุดิบ คำนวณปริมาณตาม Pax และส่งงานไปยังครัวรับผิดชอบ</div>', unsafe_allow_html=True)
     with col2:
@@ -644,7 +654,6 @@ def main_kitchen_page():
             unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
             unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
             
-            # ปรับปรุงรูปที่ 1: ตารางประวัติการสั่งให้มีกรอบสวยงาม ระยะห่างสมดุล
             display_jobs = []
             for idx, job in unique_jobs.iterrows():
                 job_to = job.get('To', '-')
@@ -673,7 +682,6 @@ def main_kitchen_page():
 
             st.dataframe(pd.DataFrame(display_jobs), use_container_width=True, hide_index=True)
             
-            # ส่วนการกดเลือกพิมพ์เอกสารตามงาน
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("**🖨️ เลือกงานเพื่อดูหรือพิมพ์เอกสาร ISO:**")
             job_options = [f"{j['To']} | {j['ประเภทงาน']} ({j['วันที่สั่ง']})" for idx, j in unique_jobs.iterrows()]

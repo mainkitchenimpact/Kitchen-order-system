@@ -158,8 +158,8 @@ def export_to_pdf_bytes(draft_df, event_type, pax, to_dept, no_func, rec_date, u
         creds.refresh(request)
         access_token = creds.token
         
-        # ตั้งค่า PDF ปรับขนาด A4 แนวตั้ง
-        pdf_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?exportFormat=pdf&format=pdf&size=A4&portrait=true&fitw=true"
+        # ตั้งค่า PDF ปรับขนาด A4 แนวนอน
+        pdf_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?exportFormat=pdf&format=pdf&size=A4&portrait=false&fitw=true"
         headers = {"Authorization": f"Bearer {access_token}"}
         
         response = requests.get(pdf_url, headers=headers)

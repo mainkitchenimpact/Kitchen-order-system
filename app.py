@@ -226,8 +226,12 @@ if 'cached_master_recipes' not in st.session_state: st.session_state.cached_mast
 if 'cached_orders' not in st.session_state: st.session_state.cached_orders = None
 
 # ==========================================
-# 4. ฟังก์ชันดึงข้อมูล & จัดฟอร์แมต & ล้างค่า
+# 4. ฟังก์ชัน Callback & ดึงข้อมูล & ล้างค่า
 # ==========================================
+def toggle_iso_view(key_name):
+    """Callback function สำหรับสลับสถานะเปิด/ปิดการแสดงผล ISO Form ป้องกัน State ตีกัน (ข้อ 1)"""
+    st.session_state[key_name] = not st.session_state.get(key_name, False)
+
 def clear_main_kitchen_form():
     st.session_state.event_type_input = ""
     st.session_state.no_function_input = ""
@@ -796,7 +800,7 @@ def main_kitchen_page():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- ส่วนที่ 4: ติดตามสถานะออเดอร์ (Dashboard Card Grouping ข้อ 1, 2, 3, 4) ---
+    # --- ส่วนที่ 4: ติดตามสถานะออเดอร์ ---
     st.markdown("---")
     st.subheader("📊 ติดตามสถานะออเดอร์")
     
@@ -815,14 +819,13 @@ def main_kitchen_page():
             unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
             unique_jobs = unique_jobs.sort_values(by='parsed_use_date', ascending=True).reset_index(drop=True)
 
-            # Grouping ตาม "วันที่ใช้สินค้า" (ข้อ 3)
             grouped_by_date = unique_jobs.groupby('วันที่ใช้สินค้า', sort=False)
 
             for use_date_str, date_jobs in grouped_by_date:
                 job_count = len(date_jobs)
                 
-                # Card Box ครอบกลุ่มวันที่ใช้สินค้า
-                with st.expander(f"📅 วันที่ใช้สินค้า: {use_date_str} (มี {job_count} งาน)", expanded=True):
+                # 🟢 ตั้งค่าขยายกล่องวันที่เป็น ย่อไว้ (expanded=False) ตามข้อ 2
+                with st.expander(f"📅 วันที่ใช้สินค้า: {use_date_str} (มี {job_count} งาน)", expanded=False):
                     for idx, job in date_jobs.iterrows():
                         job_to = job.get('To', '-')
                         job_no = job.get('No (Function)', '-')
@@ -844,7 +847,6 @@ def main_kitchen_page():
                         prep_badge = '<span class="status-badge badge-printed">🟢 Prep: พิมพ์แล้ว</span>' if prep_printed else '<span class="status-badge badge-pending">⚪ Prep: ยังไม่พิมพ์</span>'
                         butcher_badge = '<span class="status-badge badge-printed">🟢 Butcher: พิมพ์แล้ว</span>' if butcher_printed else '<span class="status-badge badge-pending">⚪ Butcher: ยังไม่พิมพ์</span>'
 
-                        # Card Box แต่ละงาน + ตัวอักษรเท่ากัน (ข้อ 1) + ปุ่มใน Card (ข้อ 2)
                         st.markdown(f"""
                         <div class="order-item-card">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -864,15 +866,21 @@ def main_kitchen_page():
                         c_btn, _ = st.columns([3, 7])
                         with c_btn:
                             btn_key = f"btn_print_{idx}_{job_to}"
-                            if st.button("📄 ดูแบบฟอร์ม ISO สั่งพิมพ์", key=btn_key):
-                                st.session_state[btn_key] = not st.session_state.get(btn_key, False)
+                            show_key = f"show_iso_{idx}_{job_to}"
+                            
+                            # 🟢 ใช้ on_click Callback แก้ปัญหา StreamlitAPIException (ข้อ 1)
+                            st.button(
+                                "📄 ดูแบบฟอร์ม ISO สั่งพิมพ์", 
+                                key=btn_key, 
+                                on_click=toggle_iso_view, 
+                                args=(show_key,)
+                            )
 
                         remarks_in_job = [str(r).strip() for r in job_items['หมายเหตุ'].dropna().unique() if str(r).strip() != '']
                         if remarks_in_job:
                             st.info(f"💬 **หมายเหตุสื่อสาร ({job_to}):** {', '.join(remarks_in_job)}")
 
-                        # แสดง ISO Form ทันทีโดยไม่มีปุ่มพรีวิวคั่น (ข้อ 4)
-                        if st.session_state.get(btn_key, False):
+                        if st.session_state.get(show_key, False):
                             hist_html, hist_pages = generate_printable_html(
                                 job_items, job_event, job_pax, job_to, job_no, job_rec_date, use_date_str
                             )
@@ -1049,7 +1057,8 @@ def receiver_kitchen_page(dept_name):
         for use_date_str, date_jobs in grouped_by_date:
             job_count = len(date_jobs)
             
-            with st.expander(f"📅 วันที่ใช้สินค้า: {use_date_str} (มี {job_count} งาน)", expanded=True):
+            # 🟢 ตั้งค่าขยายกล่องวันที่เป็น ย่อไว้ (expanded=False) ตามข้อ 2
+            with st.expander(f"📅 วันที่ใช้สินค้า: {use_date_str} (มี {job_count} งาน)", expanded=False):
                 for idx, job in date_jobs.iterrows():
                     job_to = job.get('To', '-')
                     job_no = job.get('No (Function)', '-')
@@ -1094,10 +1103,17 @@ def receiver_kitchen_page(dept_name):
                     p_col1, p_col2 = st.columns([3, 7])
                     with p_col1:
                         btn_rec_key = f"rec_btn_print_{idx}_{job_to}"
-                        if st.button("🖨️ ดูแบบฟอร์ม ISO สั่งพิมพ์", key=btn_rec_key):
-                            st.session_state[btn_rec_key] = not st.session_state.get(btn_rec_key, False)
+                        show_rec_key = f"show_rec_iso_{idx}_{job_to}"
+                        
+                        # 🟢 ใช้ on_click Callback ป้องกัน Error (ข้อ 1)
+                        st.button(
+                            "🖨️ ดูแบบฟอร์ม ISO สั่งพิมพ์", 
+                            key=btn_rec_key, 
+                            on_click=toggle_iso_view, 
+                            args=(show_rec_key,)
+                        )
 
-                    if st.session_state.get(btn_rec_key, False):
+                    if st.session_state.get(show_rec_key, False):
                         hist_html, hist_pages = generate_printable_html(
                             full_job_items, job_event, job_pax, job_to, job_no, job_rec_date, use_date_str
                         )
@@ -1226,99 +1242,7 @@ def receiver_kitchen_page(dept_name):
             st.info("ยังไม่มีประวัติการแก้ไขข้อมูลวัตถุดิบ")
 
 # ==========================================
-# 8. หน้า Admin (จัดการสูตรอาหาร)
-# ==========================================
-def admin_page():
-    col1, col2 = st.columns([8, 2])
-    with col1: 
-        st.markdown('<div class="main-title">⚙️ ระบบหลังบ้าน: จัดการสูตรอาหาร (Master Recipes)</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-title-text">เพิ่ม แก้ไข หรือลบสูตรอาหารตั้งต้นสำหรับให้ครัวเมนเลือกสั่งซื้อ</div>', unsafe_allow_html=True)
-    with col2:
-        if st.button("🚪 ออกจากระบบ", use_container_width=True):
-            st.session_state.logged_in_dept = None
-            st.rerun()
-            
-    st.markdown("---")
-    st.subheader("➕ เพิ่มสูตรอาหารใหม่ (Batch Input)")
-    
-    with st.form("batch_add_recipe_form"):
-        rc1, rc2 = st.columns(2)
-        with rc1:
-            recipe_code = st.text_input("รหัสสูตร (Recipe Code):", placeholder="เช่น EU001")
-        with rc2:
-            food_name = st.text_input("ชื่อเมนูอาหาร (Food Name):", placeholder="เช่น แกะอบซอสไทม์")
-
-        batch_df = pd.DataFrame([
-            {"ครัวที่รับผิดชอบ": "", "ชื่อวัตถุดิบ (Description)": "", "อัตราส่วนต่อ 1 คน": 0.0, "หน่วย": ""} 
-            for _ in range(20)
-        ])
-        
-        edited_batch_df = st.data_editor(
-            batch_df, 
-            num_rows="dynamic", 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "ครัวที่รับผิดชอบ": st.column_config.SelectboxColumn(
-                    "ครัวที่รับผิดชอบ",
-                    options=["", "ครัว Prep", "ครัว บุชเชอร์", "ครัว Bakery"],
-                    required=False
-                )
-            }
-        )
-        
-        submitted = st.form_submit_button("💾 บันทึกสูตรอาหารลง Firebase", type="primary")
-        
-        if submitted:
-            if food_name.strip() == "": st.error("กรุณากรอกชื่อเมนูอาหาร")
-            else:
-                success_count = 0
-                temp_master = load_master_recipes(force_reload=True)
-                for _, row in edited_batch_df.iterrows():
-                    desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
-                    row_dept = str(row["ครัวที่รับผิดชอบ"]).strip()
-                    if desc and desc != "nan":
-                        target_dept_val = row_dept if row_dept != "" else "ครัว Prep"
-                        auto_code = generate_next_item_code(target_dept_val, temp_master)
-                        new_data = {
-                            'Recipe_Code': recipe_code.strip(), 'Food_Name': food_name.strip(),
-                            'Kitchen_Dept': target_dept_val, 'Item_Code': auto_code,
-                            'Item_Description': desc,
-                            'Std_Quantity': float(row["อัตราส่วนต่อ 1 คน"]) if pd.notna(row["อัตราส่วนต่อ 1 คน"]) else 0.0,
-                            'Unit': str(row["หน่วย"]).strip() if pd.notna(row["หน่วย"]) else ""
-                        }
-                        db.collection('master_recipes').add(new_data)
-                        temp_master = pd.concat([temp_master, pd.DataFrame([new_data])], ignore_index=True)
-                        success_count += 1
-                if success_count > 0:
-                    load_master_recipes(force_reload=True)
-                    st.success(f"บันทึกเมนู '{food_name}' สำเร็จ {success_count} รายการ!")
-                    st.rerun()
-
-    st.markdown("---")
-    st.subheader("📋 รายการสูตรอาหารทั้งหมดในระบบ")
-    current_master = load_master_recipes()
-    if not current_master.empty:
-        display_admin_df = current_master.copy()
-        display_admin_df.insert(0, '🗑️ ลบ', False)
-        cols_to_show = [c for c in ['🗑️ ลบ', 'Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'] if c in display_admin_df.columns]
-        edited_master = st.data_editor(display_admin_df[cols_to_show], use_container_width=True, hide_index=True, disabled=['Recipe_Code', 'Food_Name', 'Kitchen_Dept', 'Item_Code', 'Item_Description', 'Std_Quantity', 'Unit'])
-        
-        if st.button("❌ ลบรายการสูตรอาหารที่เลือก"):
-            to_del_rows = edited_master[edited_master['🗑️ ลบ'] == True]
-            if not to_del_rows.empty:
-                count = 0
-                for idx, row in to_del_rows.iterrows():
-                    match_doc = current_master[(current_master['Food_Name'] == row['Food_Name']) & (current_master['Item_Description'] == row['Item_Description'])]
-                    for doc_id in match_doc['doc_id']:
-                        db.collection('master_recipes').document(doc_id).delete()
-                        count += 1
-                load_master_recipes(force_reload=True)
-                st.success(f"ลบรายการสำเร็จ {count} รายการ!")
-                st.rerun()
-
-# ==========================================
-# 9. ระบบควบคุมเส้นทางหน้าจอ (Router)
+# 10. ระบบควบคุมเส้นทางหน้าจอ (Router)
 # ==========================================
 if st.session_state.logged_in_dept is None: login_page()
 elif st.session_state.logged_in_dept == "Main Kitchen": main_kitchen_page()

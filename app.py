@@ -58,7 +58,6 @@ st.markdown("""
         margin-bottom: 1.5rem !important;
     }
 
-    /* ซ่อนไอคอนลูกศรเดิมที่บั๊ก */
     div[data-testid="stExpander"] details summary span[data-testid="stExpanderToggleIcon"] {
         display: none !important;
     }
@@ -150,6 +149,10 @@ if 'pax_input' not in st.session_state: st.session_state.pax_input = 0
 if 'to_input' not in st.session_state: st.session_state.to_input = ""
 if 'receive_date_input' not in st.session_state: st.session_state.receive_date_input = date.today()
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
+
+# จำนวนช่องเลือกเมนูเริ่มต้น
+if 'menu_select_count' not in st.session_state:
+    st.session_state.menu_select_count = 5
 
 # Cache ข้อมูลป้องกัน Flicker/รีเฟรชบ่อย
 if 'cached_master_recipes' not in st.session_state: st.session_state.cached_master_recipes = None
@@ -322,22 +325,27 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 5. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (จัดเรียงกลุ่มตามเมนู)
+# 5. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (รวมยอดวัตถุดิบซ้ำ & เรียงกลุ่มตามเมนู)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].astype(str).str.strip() == 'ครัว Prep'].reset_index(drop=True)
     butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].astype(str).str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])].reset_index(drop=True)
     
-    # 🟢 จัดเรียงข้อมูลตามชื่อเมนู (Menu) ก่อน แล้วจึงเรียงตามชื่อวัตถุดิบ
-    if not prep_items.empty and 'เมนู' in prep_items.columns:
-        prep_items = prep_items.sort_values(by=['เมนู', 'วัตถุดิบ']).reset_index(drop=True)
-    if not butcher_items.empty and 'เมนู' in butcher_items.columns:
-        butcher_items = butcher_items.sort_values(by=['เมนู', 'วัตถุดิบ']).reset_index(drop=True)
+    # ฟังก์ชันยุบรวมยอดวัตถุดิบซ้ำในเมนูเดียวกัน + จัดเรียงตามชื่อเมนู
+    def process_and_group_items(df):
+        if df.empty:
+            return df
+        df['จำนวน'] = pd.to_numeric(df['จำนวน'], errors='coerce').fillna(0)
+        grouped = df.groupby(['เมนู', 'วัตถุดิบ', 'หน่วย'], as_index=False)['จำนวน'].sum()
+        sorted_df = grouped.sort_values(by=['เมนู', 'วัตถุดิบ']).reset_index(drop=True)
+        return sorted_df
+
+    prep_items = process_and_group_items(prep_items)
+    butcher_items = process_and_group_items(butcher_items)
 
     formatted_rec_date = format_date_th(rec_date)
     formatted_use_date = format_date_th(use_date)
     
-    # Delivery Date แสดงเป็น "วันที่ปัจจุบัน"
     tz_th = timezone(timedelta(hours=7))
     delivery_date_today = datetime.now(tz_th).strftime("%d/%m/%Y")
     
@@ -506,11 +514,16 @@ def main_kitchen_page():
         if st.button("🆕 ขึ้นใบงานใหม่ (Clear Form)", use_container_width=True):
             st.session_state.event_type_input = ""
             st.session_state.no_function_input = ""
-            st.session_state.pax_input = 0  # Default เป็น 0
+            st.session_state.pax_input = 0
             st.session_state.to_input = ""
             st.session_state.receive_date_input = date.today()
             st.session_state.use_date_input = date.today()
             st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
+            st.session_state.menu_select_count = 5
+            # รีเซ็ตค่าเมนูใน Session State
+            for k in list(st.session_state.keys()):
+                if k.startswith("menu_select_"):
+                    del st.session_state[k]
             st.rerun()
 
     c1, c2, c3 = st.columns(3)
@@ -526,68 +539,72 @@ def main_kitchen_page():
         
     st.markdown("---")
     
-    # --- ส่วนที่ 2: เลือกเมนูอาหาร & สินค้าเพิ่มเติม ---
-    st.subheader("🛒 2. เลือกเมนู และ ปริมาณวัตถุดิบ")
+    # --- ส่วนที่ 2: เลือกเมนูอาหาร (Dropdown เรียงลงมา) ---
+    st.subheader("🛒 2. เลือกเมนูอาหาร")
     menu_list = master_df['Food_Name'].dropna().unique().tolist() if 'Food_Name' in master_df.columns else []
+
+    selected_menus = []
     
-    selected_menu = st.selectbox("ค้นหาและเลือกเมนูอาหาร:", options=menu_list, index=None, placeholder="ค้นหาและเลือกเมนูอาหาร...")
+    # วนลูปสร้าง Dropdown ตามจำนวนใน session_state.menu_select_count (ค่าเริ่มต้น 5 ช่อง)
+    for i in range(st.session_state.menu_select_count):
+        chosen = st.selectbox(
+            f"เมนูที่ {i+1}:", 
+            options=menu_list, 
+            index=None, 
+            placeholder="-- เลือกเมนูอาหาร --", 
+            key=f"menu_select_{i}"
+        )
+        if chosen:
+            selected_menus.append(chosen)
 
-    edited_prep_df, edited_butcher_df = pd.DataFrame(), pd.DataFrame()
-    if selected_menu:
-        recipe_df = master_df[master_df['Food_Name'] == selected_menu].copy()
-        if 'Std_Quantity' in recipe_df.columns:
-            recipe_df['Std_Quantity'] = pd.to_numeric(recipe_df['Std_Quantity'], errors='coerce').fillna(0)
-            recipe_df['จำนวน'] = recipe_df['Std_Quantity'] * pax
-            
-            col_prep, col_butcher = st.columns(2)
-            with col_prep:
-                st.markdown("##### 🥗 ครัว Prep")
-                p_df = recipe_df[recipe_df['Kitchen_Dept'].astype(str).str.strip() == 'ครัว Prep'].copy()
-                if not p_df.empty: 
-                    p_df.insert(0, '❌ ลบ', False)
-                    display_cols = ['❌ ลบ', 'Item_Description', 'จำนวน', 'Unit']
-                    edited_prep_df = st.data_editor(
-                        p_df[display_cols].rename(columns={'Item_Description': 'รายการวัตถุดิบ'}),
-                        use_container_width=True, hide_index=True, disabled=["รายการวัตถุดิบ"], key=f"prep_{selected_menu}"
-                    )
-                else: st.info("ไม่มีรายการส่งครัว Prep")
+    c_add_btn, c_confirm_btn = st.columns([3, 7])
+    with c_add_btn:
+        if st.button("➕ เพิ่มช่องเลือกเมนู"):
+            st.session_state.menu_select_count += 1
+            st.rerun()
 
-            with col_butcher:
-                st.markdown("##### 🥩 ครัว บุชเชอร์")
-                b_df = recipe_df[recipe_df['Kitchen_Dept'].astype(str).str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])].copy()
-                if not b_df.empty: 
-                    b_df.insert(0, '❌ ลบ', False)
-                    display_cols = ['❌ ลบ', 'Item_Description', 'จำนวน', 'Unit']
-                    edited_butcher_df = st.data_editor(
-                        b_df[display_cols].rename(columns={'Item_Description': 'รายการวัตถุดิบ'}),
-                        use_container_width=True, hide_index=True, disabled=["รายการวัตถุดิบ"], key=f"butcher_{selected_menu}"
-                    )
-                else: st.info("ไม่มีรายการส่งครัว บุชเชอร์")
-
-        if st.button(f"➕ เพิ่มเมนู '{selected_menu}' ลงในรายการสรุป", type="primary"):
-            if event_type == "": st.error("กรุณากรอก 'ประเภทงาน' ด้านบนก่อนครับ")
+    with c_confirm_btn:
+        if st.button("✅ ยืนยันรายการ", type="primary", use_container_width=True):
+            if event_type.strip() == "":
+                st.error("กรุณากรอก 'ประเภทงาน' ในส่วนที่ 1 ก่อนครับ")
+            elif not selected_menus:
+                st.error("กรุณาเลือกเมนูอาหารอย่างน้อย 1 เมนูครับ")
             else:
-                new_drafts = []
                 rec_str = format_date_th(receive_date)
                 use_str = format_date_th(use_date)
-                
                 tz_th = timezone(timedelta(hours=7))
                 now_str = datetime.now(tz_th).strftime("%d/%m/%Y %H:%M")
                 
-                for df_part, dept_name in [(edited_prep_df, 'ครัว Prep'), (edited_butcher_df, 'ครัว บุชเชอร์')]:
-                    if not df_part.empty:
-                        for _, row in df_part.iterrows():
-                            if not row.get('❌ ลบ', False):
-                                new_drafts.append({
-                                    'No (Function)': no_function, 'ประเภทงาน': event_type, 'จำนวนคน': pax,
-                                    'To': to_dept, 'วันที่รับสินค้า': rec_str, 'วันที่ใช้สินค้า': use_str, 'เมนู': selected_menu,
-                                    'วัตถุดิบ': row.get('รายการวัตถุดิบ', '-'), 'ครัวที่รับผิดชอบ': dept_name,
-                                    'จำนวน': row.get('จำนวน', 0), 'หน่วย': row.get('Unit', '-'), 'สถานะ': '🔴 รอรับออเดอร์',
-                                    'วันที่สั่ง': now_str, 'หมายเหตุ': '', 'is_printed_prep': False, 'is_printed_butcher': False
-                                })
+                new_drafts = []
+                for menu_name in selected_menus:
+                    recipe_df = master_df[master_df['Food_Name'] == menu_name].copy()
+                    if not recipe_df.empty:
+                        for _, row in recipe_df.iterrows():
+                            std_qty = float(row.get('Std_Quantity', 0)) if pd.notna(row.get('Std_Quantity')) else 0.0
+                            calc_qty = std_qty * pax
+                            
+                            new_drafts.append({
+                                'No (Function)': no_function,
+                                'ประเภทงาน': event_type,
+                                'จำนวนคน': pax,
+                                'To': to_dept,
+                                'วันที่รับสินค้า': rec_str,
+                                'วันที่ใช้สินค้า': use_str,
+                                'เมนู': menu_name,
+                                'วัตถุดิบ': row.get('Item_Description', '-'),
+                                'ครัวที่รับผิดชอบ': row.get('Kitchen_Dept', 'ครัว Prep'),
+                                'จำนวน': calc_qty,
+                                'หน่วย': row.get('Unit', '-'),
+                                'สถานะ': '🔴 รอรับออเดอร์',
+                                'วันที่สั่ง': now_str,
+                                'หมายเหตุ': '',
+                                'is_printed_prep': False,
+                                'is_printed_butcher': False
+                            })
+
                 if new_drafts:
                     st.session_state.draft_orders = pd.concat([st.session_state.draft_orders, pd.DataFrame(new_drafts)], ignore_index=True)
-                    st.success(f"เพิ่มเมนู {selected_menu} เรียบร้อย!")
+                    st.success(f"ยืนยัน {len(selected_menus)} เมนู เรียบร้อยแล้ว! รายการวัตถุดิบถูกเพิ่มลงในส่วนที่ 3 ด้านล่างแล้วครับ")
                     st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -636,7 +653,7 @@ def main_kitchen_page():
     st.markdown("---")
     st.subheader("📤 3. สรุปรายการวัตถุดิบในงานนี้")
     if st.session_state.draft_orders.empty:
-        st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูและกดปุ่ม '➕ เพิ่ม...' ด้านบน")
+        st.info("ยังไม่มีเมนูในรายการ กรุณาเลือกเมนูในส่วนที่ 2 แล้วกดปุ่ม '✅ ยืนยันรายการ' ด้านบน")
     else:
         draft_df = st.session_state.draft_orders.copy()
         draft_df['__index__'] = draft_df.index 
@@ -653,7 +670,7 @@ def main_kitchen_page():
             else: st.info("ไม่มีรายการส่งครัว Prep")
         with sum_c2:
             st.markdown("##### 🥩 สรุปส่ง: ครัว บุชเชอร์")
-            b_sum = draft_df[draft_df['ครัวที่รับผิดชอบ'] == 'ครัว บุชเชอร์']
+            b_sum = draft_df[draft_df['ครัวที่รับผิดชอบ'].astype(str).str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])]
             if not b_sum.empty:
                 e_b = st.data_editor(b_sum[summary_cols], use_container_width=True, hide_index=True, disabled=['เมนู', 'วัตถุดิบ'], column_config={"__index__": None}, key="sum_b")
             else: st.info("ไม่มีรายการส่งครัว บุชเชอร์")
@@ -706,16 +723,13 @@ def main_kitchen_page():
             if 'วันที่สั่ง' not in all_orders_df.columns: all_orders_df['วันที่สั่ง'] = '-'
             if 'หมายเหตุ' not in all_orders_df.columns: all_orders_df['หมายเหตุ'] = ''
                 
-            # รวมกลุ่มทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
             unique_jobs = all_orders_df.drop_duplicates(
                 subset=['To', 'ประเภทงาน', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า']
             ).reset_index(drop=True)
             
-            # เรียงลำดับตาม "วันที่ใช้สินค้า" โดยใกล้วันถึงก่อนอยู่แถวบน
             unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
             unique_jobs = unique_jobs.sort_values(by='parsed_use_date', ascending=True).reset_index(drop=True)
             
-            # ชื่อหัวข้อตารางแบบไม่มีตัวเลขนำหน้า
             h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
             h_c1.markdown("**วันที่สั่ง**")
             h_c2.markdown("**ชื่องาน**")
@@ -735,7 +749,6 @@ def main_kitchen_page():
                 job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
                 job_order_date = job.get('วันที่สั่ง', '-')
                 
-                # ดึงวัตถุดิบทั้งหมดของงานนี้
                 job_items = all_orders_df[
                     (all_orders_df['To'] == job_to) & 
                     (all_orders_df['ประเภทงาน'] == job_event) &
@@ -924,12 +937,10 @@ def receiver_kitchen_page(dept_name):
         if 'หมายเหตุ' not in my_orders.columns: my_orders['หมายเหตุ'] = ''
         if print_field not in my_orders.columns: my_orders[print_field] = False
             
-        # รวมทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
         unique_jobs = my_orders.drop_duplicates(
             subset=['To', 'ประเภทงาน', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า']
         ).reset_index(drop=True)
         
-        # เรียงลำดับจาก "วันที่ใช้สินค้า" โดยใกล้วันถึงก่อนอยู่แถวบน
         unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
         unique_jobs = unique_jobs.sort_values(by='parsed_use_date', ascending=True).reset_index(drop=True)
 
@@ -942,7 +953,6 @@ def receiver_kitchen_page(dept_name):
             job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
             job_order_date = job.get('วันที่สั่ง', '-')
             
-            # ดึงวัตถุดิบทั้งหมดของงานนี้แบบรวมเมนู
             full_job_items = all_orders[
                 (all_orders['To'] == job_to) & 
                 (all_orders['ประเภทงาน'] == job_event) &

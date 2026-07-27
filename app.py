@@ -322,12 +322,18 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 5. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (รวมทุกเมนูในงานเดียวกัน)
+# 5. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (จัดเรียงกลุ่มตามเมนู)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].astype(str).str.strip() == 'ครัว Prep'].reset_index(drop=True)
     butcher_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].astype(str).str.strip().isin(['ครัว บุชเชอร์', 'ครัวบุชเชอร์'])].reset_index(drop=True)
     
+    # 🟢 จัดเรียงข้อมูลตามชื่อเมนู (Menu) ก่อน แล้วจึงเรียงตามชื่อวัตถุดิบ
+    if not prep_items.empty and 'เมนู' in prep_items.columns:
+        prep_items = prep_items.sort_values(by=['เมนู', 'วัตถุดิบ']).reset_index(drop=True)
+    if not butcher_items.empty and 'เมนู' in butcher_items.columns:
+        butcher_items = butcher_items.sort_values(by=['เมนู', 'วัตถุดิบ']).reset_index(drop=True)
+
     formatted_rec_date = format_date_th(rec_date)
     formatted_use_date = format_date_th(use_date)
     
@@ -700,7 +706,7 @@ def main_kitchen_page():
             if 'วันที่สั่ง' not in all_orders_df.columns: all_orders_df['วันที่สั่ง'] = '-'
             if 'หมายเหตุ' not in all_orders_df.columns: all_orders_df['หมายเหตุ'] = ''
                 
-            # 🟢 ปรับ Grouping: ไม่ใช้ 'วันที่สั่ง' เพื่อรวมทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
+            # รวมกลุ่มทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
             unique_jobs = all_orders_df.drop_duplicates(
                 subset=['To', 'ประเภทงาน', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า']
             ).reset_index(drop=True)
@@ -729,7 +735,7 @@ def main_kitchen_page():
                 job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
                 job_order_date = job.get('วันที่สั่ง', '-')
                 
-                # 🟢 ดึงวัตถุดิบทั้งหมดของงานนี้ โดยไม่อิงระดับนาที
+                # ดึงวัตถุดิบทั้งหมดของงานนี้
                 job_items = all_orders_df[
                     (all_orders_df['To'] == job_to) & 
                     (all_orders_df['ประเภทงาน'] == job_event) &
@@ -918,7 +924,7 @@ def receiver_kitchen_page(dept_name):
         if 'หมายเหตุ' not in my_orders.columns: my_orders['หมายเหตุ'] = ''
         if print_field not in my_orders.columns: my_orders[print_field] = False
             
-        # 🟢 ปรับ Grouping: รวมทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
+        # รวมทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
         unique_jobs = my_orders.drop_duplicates(
             subset=['To', 'ประเภทงาน', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า']
         ).reset_index(drop=True)
@@ -936,7 +942,7 @@ def receiver_kitchen_page(dept_name):
             job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
             job_order_date = job.get('วันที่สั่ง', '-')
             
-            # 🟢 ดึงวัตถุดิบทั้งหมดของงานนี้แบบรวมเมนู
+            # ดึงวัตถุดิบทั้งหมดของงานนี้แบบรวมเมนู
             full_job_items = all_orders[
                 (all_orders['To'] == job_to) & 
                 (all_orders['ประเภทงาน'] == job_event) &

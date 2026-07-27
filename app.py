@@ -58,6 +58,7 @@ st.markdown("""
         margin-bottom: 1.5rem !important;
     }
 
+    /* ซ่อนไอคอนลูกศรเดิมที่บั๊ก */
     div[data-testid="stExpander"] details summary span[data-testid="stExpanderToggleIcon"] {
         display: none !important;
     }
@@ -145,7 +146,7 @@ if 'logged_in_dept' not in st.session_state:
 
 if 'event_type_input' not in st.session_state: st.session_state.event_type_input = ""
 if 'no_function_input' not in st.session_state: st.session_state.no_function_input = ""
-if 'pax_input' not in st.session_state: st.session_state.pax_input = 70
+if 'pax_input' not in st.session_state: st.session_state.pax_input = 0
 if 'to_input' not in st.session_state: st.session_state.to_input = ""
 if 'receive_date_input' not in st.session_state: st.session_state.receive_date_input = date.today()
 if 'use_date_input' not in st.session_state: st.session_state.use_date_input = date.today()
@@ -167,6 +168,17 @@ def format_date_th(date_val):
         return dt.strftime("%d/%m/%Y")
     except ValueError:
         return str(date_val)
+
+def parse_date_obj(date_val):
+    if isinstance(date_val, (date, datetime)):
+        return date_val
+    try:
+        return datetime.strptime(str(date_val), "%d/%m/%Y").date()
+    except Exception:
+        try:
+            return datetime.strptime(str(date_val), "%Y-%m-%d").date()
+        except Exception:
+            return date.max
 
 def format_qty(val):
     try:
@@ -310,7 +322,7 @@ def generate_next_item_code(dept_name, current_master_df):
     return f"{prefix}-{(max_num + 1):03d}"
 
 # ==========================================
-# 5. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์
+# 5. ฟังก์ชันสร้าง HTML แบบฟอร์ม ISO สำหรับสั่งพิมพ์ (รวมทุกเมนูในงานเดียวกัน)
 # ==========================================
 def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_date, use_date):
     prep_items = draft_df[draft_df['ครัวที่รับผิดชอบ'].astype(str).str.strip() == 'ครัว Prep'].reset_index(drop=True)
@@ -484,7 +496,7 @@ def main_kitchen_page():
         if st.button("🆕 ขึ้นใบงานใหม่ (Clear Form)", use_container_width=True):
             st.session_state.event_type_input = ""
             st.session_state.no_function_input = ""
-            st.session_state.pax_input = 70
+            st.session_state.pax_input = 0  # 🟢 ปรับเปลี่ยนค่าเริ่มต้นช่องจำนวนคนเมื่อขึ้นใบงานใหม่เป็น 0
             st.session_state.to_input = ""
             st.session_state.receive_date_input = date.today()
             st.session_state.use_date_input = date.today()
@@ -496,7 +508,7 @@ def main_kitchen_page():
         event_type = st.text_input("ประเภทงาน:", placeholder="เช่น Buffet, Set Menu...", key="event_type_input")
         no_function = st.text_input("No (Function):", placeholder="ระบุหมายเลขงาน", key="no_function_input")
     with c2:
-        pax = st.number_input("จำนวนคน (Pax):", min_value=1, key="pax_input")
+        pax = st.number_input("จำนวนคน (Pax):", min_value=0, key="pax_input")
         receive_date = st.date_input("วันที่รับสินค้า:", format="DD/MM/YYYY", key="receive_date_input")
     with c3:
         to_dept = st.text_input("To :", key="to_input")
@@ -669,6 +681,7 @@ def main_kitchen_page():
             st.session_state.show_main_preview = not st.session_state.get("show_main_preview", False)
 
         if st.session_state.get("show_main_preview", False):
+            # 🟢 รวมวัตถุดิบจากทุกเมนูลงในฟอร์ม ISO แผ่นเดียวกัน
             html_view, total_p = generate_printable_html(st.session_state.draft_orders, event_type, pax, to_dept, no_function, receive_date, use_date)
             components.html(html_view, height=750 * total_p, scrolling=True)
 
@@ -685,16 +698,20 @@ def main_kitchen_page():
             if 'หมายเหตุ' not in all_orders_df.columns: all_orders_df['หมายเหตุ'] = ''
                 
             unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
-            unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
             
+            # 🟢 เรียงลำดับจาก "วันที่ใช้สินค้า" โดยใกล้วันถึงก่อนอยู่แถวบน
+            unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
+            unique_jobs = unique_jobs.sort_values(by='parsed_use_date', ascending=True).reset_index(drop=True)
+            
+            # 🟢 ปรับลบตัวเลขนำหน้าออกจากชื่อหัวข้อตาราง
             h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
-            h_c1.markdown("**1. วันที่สั่ง**")
-            h_c2.markdown("**2. ชื่องาน**")
-            h_c3.markdown("**3. ประเภทงาน**")
-            h_c4.markdown("**4. จำนวนคน**")
-            h_c5.markdown("**5. วันที่รับสินค้า**")
-            h_c6.markdown("**6. วันที่ใช้สินค้า**")
-            h_c7.markdown("**7. พิมพ์เอกสาร**")
+            h_c1.markdown("**วันที่สั่ง**")
+            h_c2.markdown("**ชื่องาน**")
+            h_c3.markdown("**ประเภทงาน**")
+            h_c4.markdown("**จำนวนคน**")
+            h_c5.markdown("**วันที่รับสินค้า**")
+            h_c6.markdown("**วันที่ใช้สินค้า**")
+            h_c7.markdown("**พิมพ์เอกสาร**")
             st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #334155;'>", unsafe_allow_html=True)
 
             for idx, job in unique_jobs.iterrows():
@@ -808,7 +825,7 @@ def admin_page():
             if food_name.strip() == "": st.error("กรุณากรอกชื่อเมนูอาหาร")
             else:
                 success_count = 0
-                temp_master = load_master_recipes()
+                temp_master = load_master_recipes(force_reload=True)
                 for _, row in edited_batch_df.iterrows():
                     desc = str(row["ชื่อวัตถุดิบ (Description)"]).strip()
                     row_dept = str(row["ครัวที่รับผิดชอบ"]).strip()
@@ -826,6 +843,7 @@ def admin_page():
                         temp_master = pd.concat([temp_master, pd.DataFrame([new_data])], ignore_index=True)
                         success_count += 1
                 if success_count > 0:
+                    # 🟢 ล้าง Cache และสั่ง Rerun รีเฟรชหน้าเว็บทันที 1 ที
                     load_master_recipes(force_reload=True)
                     st.success(f"บันทึกเมนู '{food_name}' สำเร็จ {success_count} รายการ!")
                     st.rerun()
@@ -894,7 +912,10 @@ def receiver_kitchen_page(dept_name):
         if print_field not in my_orders.columns: my_orders[print_field] = False
             
         unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
-        unique_jobs = unique_jobs.iloc[::-1].reset_index(drop=True)
+        
+        # 🟢 เรียงลำดับจาก "วันที่ใช้สินค้า" โดยใกล้วันถึงก่อนอยู่แถวบน
+        unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
+        unique_jobs = unique_jobs.sort_values(by='parsed_use_date', ascending=True).reset_index(drop=True)
 
         for idx, job in unique_jobs.iterrows():
             job_to = job.get('To', '-')
@@ -952,7 +973,6 @@ def receiver_kitchen_page(dept_name):
                 edit_cols = ['วัตถุดิบ', 'จำนวน', 'หน่วย', 'เมนู']
                 available_cols = [c for c in edit_cols if c in job_items.columns]
                 
-                # ใช้ st.form ครอบตารางเพื่อล็อกไม่ให้ Rerun ตอนกำลังแก้ไขตัวเลข
                 with st.form(key=f"form_job_{idx}"):
                     edited_df = st.data_editor(
                         job_items[available_cols],

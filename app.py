@@ -700,7 +700,10 @@ def main_kitchen_page():
             if 'วันที่สั่ง' not in all_orders_df.columns: all_orders_df['วันที่สั่ง'] = '-'
             if 'หมายเหตุ' not in all_orders_df.columns: all_orders_df['หมายเหตุ'] = ''
                 
-            unique_jobs = all_orders_df.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+            # 🟢 ปรับ Grouping: ไม่ใช้ 'วันที่สั่ง' เพื่อรวมทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
+            unique_jobs = all_orders_df.drop_duplicates(
+                subset=['To', 'ประเภทงาน', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า']
+            ).reset_index(drop=True)
             
             # เรียงลำดับตาม "วันที่ใช้สินค้า" โดยใกล้วันถึงก่อนอยู่แถวบน
             unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
@@ -726,10 +729,12 @@ def main_kitchen_page():
                 job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
                 job_order_date = job.get('วันที่สั่ง', '-')
                 
+                # 🟢 ดึงวัตถุดิบทั้งหมดของงานนี้ โดยไม่อิงระดับนาที
                 job_items = all_orders_df[
                     (all_orders_df['To'] == job_to) & 
                     (all_orders_df['ประเภทงาน'] == job_event) &
-                    (all_orders_df['วันที่สั่ง'] == job_order_date)
+                    (all_orders_df['วันที่รับสินค้า'] == job.get('วันที่รับสินค้า')) &
+                    (all_orders_df['วันที่ใช้สินค้า'] == job.get('วันที่ใช้สินค้า'))
                 ]
 
                 col1, col2, col3, col4, col5, col6, col7 = st.columns([2.2, 2.5, 2, 1.2, 2, 2, 2])
@@ -913,7 +918,10 @@ def receiver_kitchen_page(dept_name):
         if 'หมายเหตุ' not in my_orders.columns: my_orders['หมายเหตุ'] = ''
         if print_field not in my_orders.columns: my_orders[print_field] = False
             
-        unique_jobs = my_orders.drop_duplicates(subset=['To', 'ประเภทงาน', 'วันที่สั่ง']).reset_index(drop=True)
+        # 🟢 ปรับ Grouping: รวมทุกเมนูในใบงานและวันเดียวกันเข้าด้วยกัน
+        unique_jobs = my_orders.drop_duplicates(
+            subset=['To', 'ประเภทงาน', 'วันที่รับสินค้า', 'วันที่ใช้สินค้า']
+        ).reset_index(drop=True)
         
         # เรียงลำดับจาก "วันที่ใช้สินค้า" โดยใกล้วันถึงก่อนอยู่แถวบน
         unique_jobs['parsed_use_date'] = unique_jobs['วันที่ใช้สินค้า'].apply(parse_date_obj)
@@ -928,16 +936,19 @@ def receiver_kitchen_page(dept_name):
             job_use_date = format_date_th(job.get('วันที่ใช้สินค้า', '-'))
             job_order_date = job.get('วันที่สั่ง', '-')
             
+            # 🟢 ดึงวัตถุดิบทั้งหมดของงานนี้แบบรวมเมนู
             full_job_items = all_orders[
                 (all_orders['To'] == job_to) & 
                 (all_orders['ประเภทงาน'] == job_event) &
-                (all_orders['วันที่สั่ง'] == job_order_date)
+                (all_orders['วันที่รับสินค้า'] == job.get('วันที่รับสินค้า')) &
+                (all_orders['วันที่ใช้สินค้า'] == job.get('วันที่ใช้สินค้า'))
             ].reset_index(drop=True)
 
             job_items = my_orders[
                 (my_orders['To'] == job_to) & 
                 (my_orders['ประเภทงาน'] == job_event) &
-                (my_orders['วันที่สั่ง'] == job_order_date)
+                (my_orders['วันที่รับสินค้า'] == job.get('วันที่รับสินค้า')) &
+                (my_orders['วันที่ใช้สินค้า'] == job.get('วันที่ใช้สินค้า'))
             ].reset_index(drop=True)
 
             is_job_printed = any(job_items[print_field].fillna(False)) if print_field in job_items.columns else False
@@ -969,7 +980,7 @@ def receiver_kitchen_page(dept_name):
                             st.rerun()
 
                 st.markdown("---")
-                st.markdown(f"🗓️ **วันที่สั่งออเดอร์:** `{job_order_date}`")
+                st.markdown(f"🗓️ **วันที่สั่งออเดอร์ล่าสุด:** `{job_order_date}`")
                 st.markdown("**✏️ รายการวัตถุดิบ (แก้ไขชื่อและจำนวนได้ที่ตารางนี้):**")
                 
                 edit_cols = ['วัตถุดิบ', 'จำนวน', 'หน่วย', 'เมนู']

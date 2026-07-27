@@ -331,6 +331,10 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
     formatted_rec_date = format_date_th(rec_date)
     formatted_use_date = format_date_th(use_date)
     
+    # 🟢 กำหนดให้ Delivery Date แสดงเป็น "วันที่ปัจจุบัน" (วันที่ออกใบสั่งพิมพ์)
+    tz_th = timezone(timedelta(hours=7))
+    delivery_date_today = datetime.now(tz_th).strftime("%d/%m/%Y")
+    
     ITEMS_PER_PAGE = 18
     prep_pages = max(1, math.ceil(len(prep_items) / ITEMS_PER_PAGE))
     butcher_pages = max(1, math.ceil(len(butcher_items) / ITEMS_PER_PAGE))
@@ -371,7 +375,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                     <table class="meta-table">
                         <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
                         <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
-                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{formatted_rec_date}</td></tr>
+                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว Prep</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{delivery_date_today}</td></tr>
                     </table>
                     <table class="main-table">
                         <thead>
@@ -397,7 +401,7 @@ def generate_printable_html(draft_df, event_type, pax, to_dept, no_func, rec_dat
                     <table class="meta-table">
                         <tr><td class="bg-gray" width="22%">ประเภทงาน :</td><td width="28%">{event_type}</td><td class="bg-gray" width="22%">จำนวนคน :</td><td width="28%">{pax}</td></tr>
                         <tr><td class="bg-gray">To :</td><td>{to_dept}</td><td class="bg-gray">No. (Function) :</td><td>{no_func}</td></tr>
-                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{formatted_rec_date}</td></tr>
+                        <tr><td class="bg-gray">From :</td><td class="bg-yellow">ครัว บุชเชอร์</td><td class="bg-gray">Delivery Date:</td><td class="bg-yellow">{delivery_date_today}</td></tr>
                     </table>
                     <table class="main-table">
                         <thead>
@@ -756,7 +760,7 @@ def main_kitchen_page():
             st.info("ยังไม่มีประวัติการสั่งออเดอร์ครับ")
 
     with m_tab2:
-        st.subheader("📜 ประวัติการแก้ไขชื่อ/ปริมาณวัตถุดิบ จากครัวรับงาน")
+        st.subheader("📜 ประวัติการแก้ไขชื่อ/ปริมาณวัตถุดิบ จากครัวเตรียม")
         logs_df = load_history_logs()
         if not logs_df.empty:
             rename_map = {

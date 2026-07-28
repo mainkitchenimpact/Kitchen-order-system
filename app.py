@@ -235,7 +235,7 @@ def toggle_iso_view(key_name):
     st.session_state[key_name] = not st.session_state.get(key_name, False)
 
 def clear_main_kitchen_form():
-    """ฟังก์ชันล้างค่าฟอร์มอย่างปลอดภัย"""
+    """ฟังก์ชันล้างค่าฟอร์มอย่างปลอดภัย (แก้ไขให้ไม่ลบ menu_select_count)"""
     st.session_state.event_type_input = ""
     st.session_state.no_function_input = ""
     st.session_state.pax_input = 0
@@ -243,10 +243,13 @@ def clear_main_kitchen_form():
     st.session_state.receive_date_input = date.today()
     st.session_state.use_date_input = date.today()
     st.session_state.draft_orders = pd.DataFrame(columns=columns_format)
-    st.session_state.menu_select_count = 5
+    
+    # 🟢 ลบเฉพาะ key ของ Dropdown เมนู โดยเว้น menu_select_count ไว้
     for k in list(st.session_state.keys()):
-        if k.startswith("menu_select_"):
+        if k.startswith("menu_select_") and k != "menu_select_count":
             del st.session_state[k]
+            
+    st.session_state.menu_select_count = 5
 
 def format_date_th(date_val):
     if not date_val or str(date_val) == '-':
@@ -589,7 +592,7 @@ def login_page():
 # 7. หน้าของครัวเมน (Main Kitchen)
 # ==========================================
 def main_kitchen_page():
-    # 🟢 ตรวจสอบ Flag เพื่อทำการล้างค่าฟอร์มอย่างปลอดภัยก่อนเรนเดอร์ Widget
+    # 🟢 ตรวจสอบ Flag เพื่อล้างค่าฟอร์มอย่างปลอดภัยก่อนสร้าง Widget
     if st.session_state.get('should_clear_form', False):
         clear_main_kitchen_form()
         st.session_state.should_clear_form = False
@@ -642,7 +645,8 @@ def main_kitchen_page():
     menu_list = master_df['Food_Name'].dropna().unique().tolist() if 'Food_Name' in master_df.columns else []
     selected_menus = []
     
-    for i in range(st.session_state.menu_select_count):
+    current_select_count = st.session_state.get('menu_select_count', 5)
+    for i in range(current_select_count):
         chosen = st.selectbox(
             f"เมนูที่ {i+1}:", 
             options=menu_list, 
@@ -657,7 +661,7 @@ def main_kitchen_page():
     c_add_btn, c_confirm_btn = st.columns([3, 7])
     with c_add_btn:
         if st.button("➕ เพิ่มช่องเลือกเมนู"):
-            st.session_state.menu_select_count += 1
+            st.session_state.menu_select_count = current_select_count + 1
             st.rerun()
 
     with c_confirm_btn:
@@ -758,7 +762,6 @@ def main_kitchen_page():
                     o_data['timestamp'] = firestore.SERVER_TIMESTAMP
                     db.collection('orders').add(o_data)
                 
-                # 🟢 ตั้ง Flag ล้างค่าเพื่อความปลอดภัยจาก Error
                 st.session_state.should_clear_form = True
                 load_orders(force_reload=True)
                 st.success("ส่งออเดอร์เข้าฐานข้อมูลสำเร็จ!")

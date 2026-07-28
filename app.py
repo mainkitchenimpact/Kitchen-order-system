@@ -222,6 +222,9 @@ if 'use_date_input' not in st.session_state: st.session_state.use_date_input = d
 if 'menu_select_count' not in st.session_state:
     st.session_state.menu_select_count = 5
 
+if 'should_clear_form' not in st.session_state:
+    st.session_state.should_clear_form = False
+
 if 'cached_master_recipes' not in st.session_state: st.session_state.cached_master_recipes = None
 if 'cached_orders' not in st.session_state: st.session_state.cached_orders = None
 
@@ -229,10 +232,10 @@ if 'cached_orders' not in st.session_state: st.session_state.cached_orders = Non
 # 4. ฟังก์ชัน Callback & ดึงข้อมูล & ล้างค่า
 # ==========================================
 def toggle_iso_view(key_name):
-    """Callback function สำหรับสลับสถานะเปิด/ปิดการแสดงผล ISO Form ป้องกัน State ตีกัน (ข้อ 1)"""
     st.session_state[key_name] = not st.session_state.get(key_name, False)
 
 def clear_main_kitchen_form():
+    """ฟังก์ชันล้างค่าฟอร์มอย่างปลอดภัย"""
     st.session_state.event_type_input = ""
     st.session_state.no_function_input = ""
     st.session_state.pax_input = 0
@@ -586,6 +589,11 @@ def login_page():
 # 7. หน้าของครัวเมน (Main Kitchen)
 # ==========================================
 def main_kitchen_page():
+    # 🟢 ตรวจสอบ Flag เพื่อทำการล้างค่าฟอร์มอย่างปลอดภัยก่อนเรนเดอร์ Widget
+    if st.session_state.get('should_clear_form', False):
+        clear_main_kitchen_form()
+        st.session_state.should_clear_form = False
+
     col1, col2 = st.columns([8, 2])
     with col1: 
         st.markdown('<div class="main-title">🍳 ครัวเมน (Main Kitchen)</div>', unsafe_allow_html=True)
@@ -609,7 +617,7 @@ def main_kitchen_page():
     h_col1, h_col2 = st.columns([8, 2])
     with h_col2:
         if st.button("🆕 ขึ้นใบงานใหม่ (Clear Form)", use_container_width=True):
-            clear_main_kitchen_form()
+            st.session_state.should_clear_form = True
             st.rerun()
 
     c1, c2, c3 = st.columns(3)
@@ -750,9 +758,10 @@ def main_kitchen_page():
                     o_data['timestamp'] = firestore.SERVER_TIMESTAMP
                     db.collection('orders').add(o_data)
                 
-                clear_main_kitchen_form()
+                # 🟢 ตั้ง Flag ล้างค่าเพื่อความปลอดภัยจาก Error
+                st.session_state.should_clear_form = True
                 load_orders(force_reload=True)
-                st.success("ส่งออเดอร์เข้าฐานข้อมูลสำเร็จและล้างค่าฟอร์มพร้อมขึ้นงานใหม่แล้ว!")
+                st.success("ส่งออเดอร์เข้าฐานข้อมูลสำเร็จ!")
                 st.rerun()
 
     # --- ช่องกรอกวัตถุดิบเพิ่มเติมพิเศษ ---
@@ -824,7 +833,6 @@ def main_kitchen_page():
             for use_date_str, date_jobs in grouped_by_date:
                 job_count = len(date_jobs)
                 
-                # 🟢 ตั้งค่าขยายกล่องวันที่เป็น ย่อไว้ (expanded=False) ตามข้อ 2
                 with st.expander(f"📅 วันที่ใช้สินค้า: {use_date_str} (มี {job_count} งาน)", expanded=False):
                     for idx, job in date_jobs.iterrows():
                         job_to = job.get('To', '-')
@@ -868,7 +876,6 @@ def main_kitchen_page():
                             btn_key = f"btn_print_{idx}_{job_to}"
                             show_key = f"show_iso_{idx}_{job_to}"
                             
-                            # 🟢 ใช้ on_click Callback แก้ปัญหา StreamlitAPIException (ข้อ 1)
                             st.button(
                                 "📄 ดูแบบฟอร์ม ISO สั่งพิมพ์", 
                                 key=btn_key, 
@@ -1057,7 +1064,6 @@ def receiver_kitchen_page(dept_name):
         for use_date_str, date_jobs in grouped_by_date:
             job_count = len(date_jobs)
             
-            # 🟢 ตั้งค่าขยายกล่องวันที่เป็น ย่อไว้ (expanded=False) ตามข้อ 2
             with st.expander(f"📅 วันที่ใช้สินค้า: {use_date_str} (มี {job_count} งาน)", expanded=False):
                 for idx, job in date_jobs.iterrows():
                     job_to = job.get('To', '-')
@@ -1105,7 +1111,6 @@ def receiver_kitchen_page(dept_name):
                         btn_rec_key = f"rec_btn_print_{idx}_{job_to}"
                         show_rec_key = f"show_rec_iso_{idx}_{job_to}"
                         
-                        # 🟢 ใช้ on_click Callback ป้องกัน Error (ข้อ 1)
                         st.button(
                             "🖨️ ดูแบบฟอร์ม ISO สั่งพิมพ์", 
                             key=btn_rec_key, 
